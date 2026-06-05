@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-electron/
+dist-ssr/
+build/
+.env
+.env.local
+.env.*.local
+*.local
+.DS_Store
+*.log
+tsconfig.*.tsbuildinfo
+bun.lockb
