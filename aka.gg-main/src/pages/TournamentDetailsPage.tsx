@@ -3,13 +3,18 @@ import { useParams, Link } from 'react-router-dom';
 import {
   Trophy, Calendar, Users, ArrowLeft, Copy, Check, Zap,
   BarChart2, GitBranch, List, Play, RefreshCw, UserCheck,
-  Lock, Shield, ChevronRight,
+  Lock, Shield, ChevronRight, Activity,
 } from 'lucide-react';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import gsap from 'gsap';
 import { motion, AnimatePresence } from 'framer-motion';
 import axiosInstance from '@/lib/axios';
 import { TournamentBracket } from '@/components/TournamentBracket';
+import { MatchStatsDetail } from '@/components/MatchStatsDetail';
+import { TournamentGlobalStats } from '@/components/TournamentGlobalStats';
+import { useMatchStats } from '@/hooks/useMatchStats';
+import { useTournamentGlobalStats } from '@/hooks/useTournamentGlobalStats';
+import { Toast } from '@/components/Toast';
 
 type TournamentPhase = 'registration' | 'checkin' | 'active' | 'complete';
 
@@ -18,6 +23,7 @@ interface BracketMatch {
   id:string; round:number; matchNumber:number;
   team1:string|null; team2:string|null; winner:string|null;
   code:string|null; matchStatus:string; score1?:number; score2?:number;
+  gameId?:number; gameRegion?:string;
 }
 interface Tournament {
   id:string; name:string; phase:TournamentPhase; status:string;
@@ -230,7 +236,166 @@ const TABS = [
   { key:'bracket',   label:'Bracket',    icon:<GitBranch className="h-4 w-4"/> },
   { key:'standings', label:'Standings',  icon:<BarChart2 className="h-4 w-4"/> },
   { key:'equipos',   label:'Equipos',    icon:<List className="h-4 w-4"/> },
+  { key:'stats',     label:'Stats',      icon:<Activity className="h-4 w-4"/> },
 ];
+
+// ─── Stats tab inner component ────────────────────────────────────────────────
+function MatchStatsPicker({
+  tournament, registrations,
+}: { tournament: Tournament; registrations: Registration[] }) {
+  const matches = (tournament.bracket ?? []).filter(
+    m => m.matchStatus === 'active' || m.matchStatus === 'complete'
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(
+    matches.find(m => m.gameId)?.id ?? matches[0]?.id ?? null
+  );
+  const selected = matches.find(m => m.id === selectedId) ?? null;
+
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const getTeamName = (team: string | null) =>
+    registrations.find(r => r.teamName === team)?.teamName ?? team;
+
+  const { stats, loading, error } = useMatchStats({
+    tournamentId: tournament.id,
+    bracketMatchId: selected?.id ?? '',
+    gameId: selected?.gameId,
+    enabled: !!selected?.id,
+    onComplete: (s) => {
+      const winner = s.winner === 'blue'
+        ? (selected?.team1 ?? 'Equipo Azul')
+        : (selected?.team2 ?? 'Equipo Rojo');
+      setToastMsg(`🏆 ¡${winner} ganó la partida! Stats cargados.`);
+    },
+  });
+
+  if (matches.length === 0) {
+    return (
+      <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] py-20 text-center">
+        <Activity className="h-12 w-12 mx-auto mb-4 text-white/10" />
+        <p className="text-white/30 text-sm">Stats disponibles cuando el torneo esté activo</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {toastMsg && (
+        <Toast
+          message={toastMsg}
+          type="success"
+          duration={6000}
+          onClose={() => setToastMsg(null)}
+        />
+      )}
+
+      {/* Match selector */}
+      {matches.length > 1 && (
+        <div className="flex flex-wrap gap-2 mb-5">
+          {matches.map(m => (
+            <button
+              key={m.id}
+              onClick={() => setSelectedId(m.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                selectedId === m.id
+                  ? 'bg-white text-black border-white'
+                  : 'border-white/10 text-white/40 hover:border-white/20 hover:text-white/70'
+              }`}
+            >
+              R{m.round}P{m.matchNumber}: {m.team1 ?? '?'} vs {m.team2 ?? '?'}
+              {m.matchStatus === 'complete' && ' ✓'}
+              {!m.gameId && ' (sin ID)'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <MatchStatsDetail
+          stats={stats}
+          loading={loading}
+          error={error}
+          bracketMatchId={selected.id}
+          gameId={selected.gameId}
+          team1={getTeamName(selected.team1)}
+          team2={getTeamName(selected.team2)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Stats tab — global overview + per-match picker ──────────────────────────
+function StatsTabView({
+  tournament, registrations,
+}: { tournament: Tournament; registrations: Registration[] }) {
+  const [subTab, setSubTab] = useState<'resumen' | 'partidas'>('resumen');
+  const [toast, setToast]   = useState<string | null>(null);
+
+  const { data: globalStats, loading: globalLoading, refresh: globalRefresh } = useTournamentGlobalStats({
+    tournamentId: tournament.id,
+    enabled: true,
+    onNewMatch: () => setToast('¡Nueva partida completada! Stats del torneo actualizados.'),
+  });
+
+  return (
+    <div>
+      {toast && (
+        <Toast message={toast} type="success" duration={6000} onClose={() => setToast(null)} />
+      )}
+
+      {/* Sub-tabs */}
+      <div className="flex gap-1 mb-6 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06] w-fit">
+        <button
+          onClick={() => setSubTab('resumen')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            subTab === 'resumen' ? 'bg-white text-black' : 'text-white/40 hover:text-white/70'
+          }`}
+        >
+          <BarChart2 className="h-4 w-4" /> Resumen Global
+        </button>
+        <button
+          onClick={() => setSubTab('partidas')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            subTab === 'partidas' ? 'bg-white text-black' : 'text-white/40 hover:text-white/70'
+          }`}
+        >
+          <Activity className="h-4 w-4" /> Partidas
+        </button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {subTab === 'resumen' && (
+          <motion.div key="resumen" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            {globalStats ? (
+              <TournamentGlobalStats
+                data={globalStats}
+                loading={globalLoading}
+                onRefresh={globalRefresh}
+              />
+            ) : globalLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <div className="h-7 w-7 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                <p className="text-white/30 text-sm animate-pulse">Cargando stats globales...</p>
+              </div>
+            ) : (
+              <GlassCard className="py-20 text-center">
+                <BarChart2 className="h-12 w-12 mx-auto mb-4 text-gray-800" />
+                <p className="text-gray-500">Disponible cuando haya partidas completadas</p>
+              </GlassCard>
+            )}
+          </motion.div>
+        )}
+
+        {subTab === 'partidas' && (
+          <motion.div key="partidas" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <MatchStatsPicker tournament={tournament} registrations={registrations} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TournamentDetailsPage() {
@@ -469,6 +634,13 @@ export default function TournamentDetailsPage() {
                   <p className="text-gray-500">Disponible cuando inicie el torneo</p>
                 </GlassCard>
               )}
+            </motion.div>
+          )}
+
+          {/* Stats */}
+          {tab === 'stats' && (
+            <motion.div key="stats" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0}}>
+              <StatsTabView tournament={tournament} registrations={registrations} />
             </motion.div>
           )}
 

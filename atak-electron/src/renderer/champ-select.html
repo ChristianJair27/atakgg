@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ATAK — Champ Select</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      rgba(8, 8, 14, 0.96);
+      --card:    rgba(255, 255, 255, 0.03);
+      --border:  rgba(255, 255, 255, 0.07);
+      --text:    #f1f1f1;
+      --muted:   #666;
+      --accent:  #4d9ea8;
+      --gold:    #fcd34d;
+      --green:   #22c55e;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: transparent;
+      color: var(--text);
+      user-select: none;
+      overflow: hidden;
+      width: 340px;
+    }
+
+    .panel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--accent);
+      border-radius: 10px;
+      overflow: hidden;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(77,158,168,0.15);
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px 8px 12px;
+      background: rgba(0,0,0,0.4);
+      border-bottom: 1px solid var(--border);
+      -webkit-app-region: drag;
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.25em;
+      color: var(--accent);
+    }
+    .header-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: blink 2s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .header-badge {
+      font-size: 8px; font-weight: 700; letter-spacing: 0.25em;
+      color: var(--gold); padding: 2px 6px;
+      border: 1px solid rgba(252,211,77,0.25); border-radius: 3px;
+      background: rgba(252,211,77,0.05);
+    }
+    .close-btn {
+      -webkit-app-region: no-drag;
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; color: var(--muted);
+      background: transparent; border: none; border-radius: 3px;
+      cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    .close-btn:hover { background: rgba(239,68,68,0.12); color: #f87171; }
+
+    /* ── Waiting ── */
+    #waiting {
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .waiting-icon { font-size: 32px; opacity: 0.3; margin-bottom: 12px; }
+    .waiting-text { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; }
+
+    /* ── Champion section ── */
+    #champSection { display: none; }
+    #champSection.active { display: block; }
+
+    .champ-hero {
+      position: relative;
+      height: 90px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.3);
+    }
+    .champ-splash {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 20%;
+      opacity: 0.35;
+      filter: blur(1px);
+    }
+    .champ-info {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+    }
+    .champ-portrait {
+      width: 56px; height: 56px;
+      border-radius: 8px;
+      border: 2px solid rgba(255,255,255,0.15);
+      object-fit: cover;
+      flex-shrink: 0;
+      background: rgba(255,255,255,0.05);
+    }
+    .champ-meta { flex: 1; min-width: 0; }
+    .champ-name {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .champ-sub {
+      font-size: 10px;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+    .patch-tag {
+      font-size: 9px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      margin-top: 4px;
+    }
+
+    /* ── Section block ── */
+    .section {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-label {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* ── Runes ── */
+    .rune-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .rune-path-icon {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+    }
+    .rune-path-name { font-size: 11px; font-weight: 700; color: var(--text); }
+    .rune-path-sep { font-size: 10px; color: var(--muted); margin: 0 4px; }
+
+    .rune-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+    .rune-icon {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      object-fit: contain;
+      padding: 2px;
+    }
+    .rune-icon.keystone { width: 34px; height: 34px; padding: 3px; border-color: rgba(77,158,168,0.3); }
+    .rune-name { font-size: 10px; color: rgba(255,255,255,0.7); }
+    .rune-name.keystone { font-size: 11px; font-weight: 700; color: var(--text); }
+
+    /* ── Shards ── */
+    .shards-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .shard {
+      font-size: 9px;
+      color: var(--muted);
+      padding: 2px 7px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    /* ── Items ── */
+    .items-row {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .item-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .item-icon {
+      width: 34px; height: 34px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+      object-fit: cover;
+      background: rgba(255,255,255,0.05);
+    }
+    .item-icon.boots { border-color: rgba(252,211,77,0.3); }
+    .item-icon.starter { width: 28px; height: 28px; border-radius: 5px; }
+    .item-sep {
+      font-size: 10px; color: var(--muted);
+      align-self: center;
+    }
+
+    /* ── Tips ── */
+    .tip-list { list-style: none; }
+    .tip-item {
+      font-size: 10px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.65);
+      padding-left: 12px;
+      position: relative;
+      margin-bottom: 4px;
+    }
+    .tip-item::before {
+      content: '›';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* ── Loading state ── */
+    .loading-bar {
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    .loading-text {
+      font-size: 10px;
+      color: var(--muted);
+      padding: 20px;
+      text-align: center;
+      letter-spacing: 0.15em;
+      font-style: italic;
+    }
+
+    #content { display: none; }
+    #content.active { display: block; }
+    #loadingBar { display: none; }
+    #loadingBar.active { display: block; }
+  </style>
+</head>
+<body>
+<div class="panel">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-brand">
+      <div class="header-dot"></div>
+      ATAK.GG
+    </div>
+    <span class="header-badge">CHAMP SELECT</span>
+    <button class="close-btn" onclick="closeMe()" title="Close">×</button>
+  </div>
+
+  <!-- Loading bar -->
+  <div id="loadingBar" class="loading-bar"></div>
+
+  <!-- Waiting state -->
+  <div id="waiting">
+    <div class="waiting-icon">⚔️</div>
+    <div class="waiting-text">Waiting for champion selection…</div>
+  </div>
+
+  <!-- Champ section -->
+  <div id="champSection">
+
+    <!-- Hero -->
+    <div class="champ-hero">
+      <img id="splashBg" class="champ-splash" src="" alt="" />
+      <div class="champ-info">
+        <img id="portrait" class="champ-portrait" src="" alt="" />
+        <div class="champ-meta">
+          <div class="champ-name" id="champName">—</div>
+          <div class="champ-sub" id="champRole">—</div>
+          <div class="patch-tag" id="patchTag">Patch —</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Build content -->
+    <div id="content">
+
+      <!-- Runes -->
+      <div class="section">
+        <div class="section-label">Runes</div>
+        <div class="rune-header">
+          <img id="primaryPathIcon" class="rune-path-icon" src="" alt="" />
+          <span class="rune-path-name" id="primaryPathName">—</span>
+          <span class="rune-path-sep">+</span>
+          <img id="secondaryPathIcon" class="rune-path-icon" src="" alt="" />
+          <span class="rune-path-name" id="secondaryPathName">—</span>
+        </div>
+
+        <!-- Keystone -->
+        <div class="rune-row">
+          <img id="runeKeystone" class="rune-icon keystone" src="" alt="" title="" />
+          <span class="rune-name keystone" id="runeKeystoneName">—</span>
+        </div>
+
+        <!-- Primary row runes -->
+        <div id="primaryRunes" style="display:flex;flex-direction:column;gap:4px;"></div>
+
+        <!-- Secondary runes -->
+        <div id="secondaryRunes" style="display:flex;flex-direction:column;gap:4px;margin-top:4px;opacity:0.75;"></div>
+
+        <!-- Shards -->
+        <div class="shards-row" id="shardsRow"></div>
+      </div>
+
+      <!-- Items -->
+      <div class="section">
+        <div class="section-label">Build</div>
+        <div class="items-row" id="starterRow" style="margin-bottom:8px;"></div>
+        <div class="items-row" id="coreItemsRow"></div>
+        <div style="margin-top:6px;display:flex;align-items:center;gap:4px;">
+          <img id="bootsIcon" class="item-icon boots" style="width:26px;height:26px;" src="" alt="" title="" />
+          <span style="font-size:9px;color:var(--muted);" id="bootsName">—</span>
+        </div>
+      </div>
+
+      <!-- Tips -->
+      <div class="section" style="border-bottom:none;">
+        <div class="section-label">Tips</div>
+        <ul class="tip-list" id="tipsList"></ul>
+      </div>
+
+    </div><!-- /content -->
+
+    <!-- Loading placeholder -->
+    <div id="loadingPlaceholder" class="loading-text">Analyzing champion…</div>
+
+  </div><!-- /champSection -->
+</div>
+
+<script>
+const { ipcRenderer } = window.require('electron');
+
+const elWaiting     = document.getElementById('waiting');
+const elChampSect   = document.getElementById('champSection');
+const elLoadingBar  = document.getElementById('loadingBar');
+const elContent     = document.getElementById('content');
+const elLoadingPh   = document.getElementById('loadingPlaceholder');
+
+const elSplash      = document.getElementById('splashBg');
+const elPortrait    = document.getElementById('portrait');
+const elChampName   = document.getElementById('champName');
+const elChampRole   = document.getElementById('champRole');
+const elPatchTag    = document.getElementById('patchTag');
+
+const elPrimPathIcon = document.getElementById('primaryPathIcon');
+const elPrimPathName = document.getElementById('primaryPathName');
+const elSecPathIcon  = document.getElementById('secondaryPathIcon');
+const elSecPathName  = document.getElementById('secondaryPathName');
+const elKeystone     = document.getElementById('runeKeystone');
+const elKeystoneName = document.getElementById('runeKeystoneName');
+const elPrimRunes    = document.getElementById('primaryRunes');
+const elSecRunes     = document.getElementById('secondaryRunes');
+const elShards       = document.getElementById('shardsRow');
+
+const elStarterRow   = document.getElementById('starterRow');
+const elCoreRow      = document.getElementById('coreItemsRow');
+const elBootsIcon    = document.getElementById('bootsIcon');
+const elBootsName    = document.getElementById('bootsName');
+const elTipsList     = document.getElementById('tipsList');
+
+const SHARD_NAMES = {
+  5005: 'Atk Speed', 5008: 'Adaptive Force', 5002: 'Armor',
+  5003: 'Magic Resist', 5001: 'Health', 5007: 'CDR',
+};
+
+function setLoading(show) {
+  elLoadingBar.className = show ? 'loading-bar active' : 'loading-bar';
+  if (show) {
+    elContent.className = 'content';
+    elLoadingPh.style.display = 'block';
+  }
+}
+
+function showWaiting() {
+  elWaiting.style.display = 'block';
+  elChampSect.className = 'champSection';
+  setLoading(false);
+}
+
+function showChampBasic(champName, role, patch, portrait) {
+  elWaiting.style.display = 'none';
+  elChampSect.className = 'champSection active';
+
+  elChampName.textContent = champName || '—';
+  elChampRole.textContent = (role || '').toUpperCase();
+  elPatchTag.textContent  = patch ? 'Patch ' + patch : '';
+
+  if (portrait) {
+    elPortrait.src = portrait;
+    elSplash.src = portrait;
+  }
+
+  elContent.className = 'content';
+  elLoadingPh.style.display = 'block';
+}
+
+function showFullData(data) {
+  // Portrait & splash
+  if (data.portrait) {
+    elPortrait.src = data.portrait;
+    elSplash.src = data.portrait;
+  }
+  if (data.champion) elChampName.textContent = data.champion;
+  if (data.role)     elChampRole.textContent = data.role.toUpperCase();
+  if (data.patch)    elPatchTag.textContent = 'Patch ' + data.patch;
+
+  // Rune paths
+  const runes = data.runes;
+  if (runes) {
+    elPrimPathIcon.src = runes.primaryPath?.icon || '';
+    elPrimPathName.textContent = runes.primaryPath?.name || '—';
+    elSecPathIcon.src = runes.secondaryPath?.icon || '';
+    elSecPathName.textContent = runes.secondaryPath?.name || '—';
+
+    // Keystone
+    const ks = runes.keystone;
+    if (ks) {
+      elKeystone.src = ks.icon || '';
+      elKeystone.title = ks.name || '';
+      elKeystoneName.textContent = ks.name || '—';
+    }
+
+    // Primary runes
+    elPrimRunes.innerHTML = '';
+    (runes.primary || []).forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'rune-row';
+      row.innerHTML = `<img class="rune-icon" src="${r.icon||''}" alt="" title="${r.name||''}" /><span class="rune-name">${r.name||'—'}</span>`;
+      elPrimRunes.appendChild(row);
+    });
+
+    // Secondary runes
+    elSecRunes.innerHTML = '';
+    (runes.secondary || []).forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'rune-row';
+      row.innerHTML = `<img class="rune-icon" src="${r.icon||''}" alt="" title="${r.name||''}" /><span class="rune-name">${r.name||'—'}</span>`;
+      elSecRunes.appendChild(row);
+    });
+
+    // Shards
+    elShards.innerHTML = '';
+    (runes.shards || []).forEach(id => {
+      const span = document.createElement('span');
+      span.className = 'shard';
+      span.textContent = SHARD_NAMES[id] || ('Shard ' + id);
+      elShards.appendChild(span);
+    });
+  }
+
+  // Items
+  const items = data.items;
+  if (items) {
+    elStarterRow.innerHTML = '';
+    (items.starter || []).forEach((item, i) => {
+      if (i > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'item-sep';
+        sep.textContent = '+';
+        elStarterRow.appendChild(sep);
+      }
+      const wrap = document.createElement('div');
+      wrap.className = 'item-wrap';
+      wrap.innerHTML = `<img class="item-icon starter" src="${item.icon||''}" alt="" title="${item.name||''}" />`;
+      elStarterRow.appendChild(wrap);
+    });
+
+    elCoreRow.innerHTML = '';
+    (items.core || []).forEach(item => {
+      const wrap = document.createElement('div');
+      wrap.className = 'item-wrap';
+      wrap.innerHTML = `<img class="item-icon" src="${item.icon||''}" alt="" title="${item.name||''}" />`;
+      elCoreRow.appendChild(wrap);
+    });
+
+    const boots = items.boots;
+    if (boots) {
+      elBootsIcon.src = boots.icon || '';
+      elBootsIcon.title = boots.name || '';
+      elBootsName.textContent = boots.name || '—';
+    }
+  }
+
+  // Tips
+  elTipsList.innerHTML = '';
+  (data.tips || []).forEach(tip => {
+    const li = document.createElement('li');
+    li.className = 'tip-item';
+    li.textContent = tip;
+    elTipsList.appendChild(li);
+  });
+
+  setLoading(false);
+  elLoadingPh.style.display = 'none';
+  elContent.className = 'content active';
+}
+
+// ── IPC listeners ──────────────────────────────────────────────────────────────
+ipcRenderer.on('champion-data', (e, data) => {
+  if (!data) { showWaiting(); return; }
+
+  if (data.loading) {
+    showChampBasic(data.champName, data.role, data.patch, data.portrait);
+    setLoading(true);
+    return;
+  }
+
+  if (data.error) {
+    if (data.champName) showChampBasic(data.champName, '', '', '');
+    elLoadingPh.textContent = 'Could not load recommendations.';
+    setLoading(false);
+    return;
+  }
+
+  showFullData(data);
+});
+
+ipcRenderer.on('champion-cleared', () => {
+  showWaiting();
+});
+
+function closeMe() {
+  window.close();
+}
+
+// Initial state
+showWaiting();
+</script>
+</body>
+</html>

@@ -7,8 +7,8 @@ const router = Router();
 // Cache: 5 minutos TTL
 const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 
-const OLLAMA_URL = 'http://lpsantiago.ddns.net:11434/api/chat';
-const MODEL = 'dolphin-llama3:8b';
+const OLLAMA_URL = 'http://localhost:11434/api/chat';
+const MODEL = 'llama3.1:8b';
 
 // Helper para generar key de cache
 const getCacheKey = (type: string, data: any) => `${type}:${JSON.stringify(data)}`;
@@ -198,8 +198,9 @@ router.post('/ai-live-coach', async (req, res) => {
     return res.json({ advice: cached });
   }
 
-  const blue = liveGame.participants.filter((p: any) => p.teamId === 100).map((p: any) => p.summonerName || p.riotId).join(', ');
-  const red  = liveGame.participants.filter((p: any) => p.teamId === 200).map((p: any) => p.summonerName || p.riotId).join(', ');
+  const fmtPlayer = (p: any) => `${p.championName || p.summonerName}(${p.kills}/${p.deaths}/${p.assists} ${p.cs}cs)`
+  const blue = liveGame.participants.filter((p: any) => p.teamId === 100).map(fmtPlayer).join(', ');
+  const red  = liveGame.participants.filter((p: any) => p.teamId === 200).map(fmtPlayer).join(', ');
 
   const prompt = `Eres ATAK AI Coach, un analista de LoL extremadamente directo, con humor negro y conocimiento profundo. 
 Estás viendo una partida en vivo (minuto ${Math.floor((liveGame.gameLength || 0) / 60)}).
@@ -227,12 +228,39 @@ Responde SOLO con el texto del consejo. Nada de JSON, nada de explicaciones extr
     }, { timeout: 120000 });
 
     const advice = response.data.message?.content?.trim() || 'No pude generar consejo en este momento.';
-    
-    cache.set(cacheKey, advice, 60); // cache corto para live
+    cache.set(cacheKey, advice, 60);
     res.json({ advice });
   } catch (error: any) {
-    console.error('Error IA live coach:', error.message);
-    res.status(500).json({ error: 'Error conectando con el coach de IA' });
+    console.error('Error IA live coach:', error.code ?? error.message);
+    // Return graceful fallback so the overlay doesn't lose state over a transient AI error
+    res.json({ advice: null, unavailable: true });
+  }
+});
+
+// Arena augment tip — short actionable hint for the current champion
+router.post('/ai-augment-tip', async (req, res) => {
+  const { champion, currentAugments } = req.body;
+  if (!champion) return res.status(400).json({ error: 'Missing champion' });
+
+  const haveList = Array.isArray(currentAugments) && currentAugments.length > 0
+    ? currentAugments.join(', ')
+    : 'none yet';
+
+  const prompt = `You are a concise LoL Arena coach. Champion: ${champion}. Current augments: ${haveList}.
+Give ONE sentence (max 120 chars) advising what augment type to prioritize next pick. Be direct, specific, no filler. Only the tip text.`;
+
+  try {
+    const response = await axios.post(OLLAMA_URL, {
+      model: MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      stream: false,
+    }, { timeout: 60000 });
+
+    const tip = (response.data.message?.content?.trim() || '').slice(0, 160);
+    res.json({ tip });
+  } catch (error: any) {
+    console.error('Error IA augment tip:', error.code ?? error.message);
+    res.json({ tip: null, unavailable: true });
   }
 });
 

@@ -140,3 +140,25 @@ export const getCodeInfo = async (tournamentCode: string) => {
     );
   }
 };
+
+// ─── Games by Code ────────────────────────────────────────────────────────────
+// Devuelve las partidas jugadas con un código de torneo específico.
+// Responde un array de { region, code, gameId } — puede estar vacío si la
+// partida aún no terminó o el código no fue usado.
+export const getGamesByCode = async (
+  tournamentCode: string
+): Promise<Array<{ region: string; code: string; gameId: number }>> => {
+  try {
+    const { data } = await riotAxios.get(
+      `/lol/${API_PATH}/v5/games/by-code/${encodeURIComponent(tournamentCode)}`
+    );
+    return Array.isArray(data) ? data : [];
+  } catch (err: any) {
+    // 404 = código válido pero aún sin partida registrada
+    if (err.response?.status === 404) return [];
+    console.error('[GamesByCode] Error:', err.response?.status, err.response?.data);
+    throw new Error(
+      `getGamesByCode falló: ${err.response?.data?.message || err.message}`
+    );
+  }
+};

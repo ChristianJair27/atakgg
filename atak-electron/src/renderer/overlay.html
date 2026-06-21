@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>ATAK.GG HUD</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --red: #dc2626;
+      --red-dim: #991b1b;
+      --bg: rgba(10, 10, 10, 0.88);
+      --bg-card: rgba(20, 20, 20, 0.92);
+      --border: rgba(255, 255, 255, 0.07);
+      --text: #f1f1f1;
+      --muted: #888;
+      --green: #22c55e;
+      --yellow: #f59e0b;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: transparent;
+      color: var(--text);
+      user-select: none;
+      overflow: hidden;
+      width: 290px;
+    }
+
+    .hud {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--red);
+      border-radius: 10px;
+      overflow: hidden;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(220,38,38,0.1);
+    }
+
+    /* Title bar */
+    .title-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px 7px;
+      background: rgba(0,0,0,0.5);
+      border-bottom: 1px solid var(--border);
+      -webkit-app-region: drag;
+      cursor: move;
+    }
+    .title-bar .logo {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--red);
+    }
+    .logo-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--red);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .title-btn {
+      -webkit-app-region: no-drag;
+      cursor: pointer;
+      width: 20px; height: 20px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      border: none;
+      background: transparent;
+      transition: background 0.15s, color 0.15s;
+    }
+    .title-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+
+    /* Waiting state */
+    .waiting {
+      padding: 20px 14px;
+      text-align: center;
+    }
+    .waiting-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
+    .waiting-text { font-size: 11px; color: var(--muted); line-height: 1.6; }
+    .waiting-hint {
+      margin-top: 10px;
+      font-size: 10px;
+      color: rgba(220,38,38,0.6);
+      letter-spacing: 0.5px;
+    }
+
+    /* Game content */
+    .game-content { display: none; }
+    .game-content.active { display: block; }
+
+    /* Player info */
+    .player-info {
+      padding: 8px 12px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .champion-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .summoner-name {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    /* KDA section */
+    .kda-section {
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+    }
+    .kda-row {
+      display: flex;
+      justify-content: center;
+      align-items: baseline;
+      gap: 2px;
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -1px;
+    }
+    .kda-k { color: #86efac; }
+    .kda-sep { color: var(--muted); font-size: 18px; margin: 0 2px; }
+    .kda-d { color: #fca5a5; }
+    .kda-a { color: #93c5fd; }
+    .kda-labels {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      margin-top: 3px;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .kda-label-k { color: #86efac; opacity: 0.7; }
+    .kda-label-d { color: #fca5a5; opacity: 0.7; }
+    .kda-label-a { color: #93c5fd; opacity: 0.7; }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-cell {
+      padding: 7px 12px;
+      border-right: 1px solid var(--border);
+    }
+    .stat-cell:nth-child(even) { border-right: none; }
+    .stat-label {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .stat-value {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .stat-value.gold-val { color: #fcd34d; }
+
+    /* Game time bar */
+    .time-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 12px;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+    }
+    .time-label { color: var(--muted); letter-spacing: 0.5px; }
+    .time-value {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    /* Objectives */
+    .objectives {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .obj-title {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .obj-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 11px;
+    }
+    .obj-name {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: rgba(255,255,255,0.75);
+    }
+    .obj-time { font-family: 'Courier New', monospace; font-size: 11px; font-weight: 600; }
+    .obj-time.active { color: var(--green); }
+    .obj-time.soon { color: var(--yellow); }
+    .obj-time.upcoming { color: var(--muted); }
+    .obj-time.dead { color: rgba(255,255,255,0.25); text-decoration: line-through; }
+
+    /* Footer */
+    .hud-footer {
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .hotkey-hint {
+      font-size: 9px;
+      color: rgba(255,255,255,0.2);
+      letter-spacing: 0.5px;
+    }
+    .hotkey-key {
+      display: inline-block;
+      padding: 1px 4px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 3px;
+      font-size: 9px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <!-- Title Bar -->
+    <div class="title-bar">
+      <div class="logo">
+        <div class="logo-dot" id="statusDot"></div>
+        ATAK.GG
+      </div>
+      <button class="title-btn" id="toggleBtn" title="Toggle (F8)">–</button>
+    </div>
+
+    <!-- Waiting for game -->
+    <div id="waitingState" class="waiting">
+      <div class="waiting-icon">🎮</div>
+      <div class="waiting-text">
+        Esperando a<br/>League of Legends...
+      </div>
+      <div class="waiting-hint">El HUD aparecerá automáticamente</div>
+    </div>
+
+    <!-- Game HUD (hidden until game detected) -->
+    <div id="gameContent" class="game-content">
+      <!-- Player -->
+      <div class="player-info">
+        <div class="champion-name" id="championName">—</div>
+        <div class="summoner-name" id="summonerName">—</div>
+      </div>
+
+      <!-- KDA -->
+      <div class="kda-section">
+        <div class="kda-row">
+          <span class="kda-k" id="statKills">0</span>
+          <span class="kda-sep">/</span>
+          <span class="kda-d" id="statDeaths">0</span>
+          <span class="kda-sep">/</span>
+          <span class="kda-a" id="statAssists">0</span>
+        </div>
+        <div class="kda-labels">
+          <span class="kda-label-k">K</span>
+          <span class="kda-label-d">D</span>
+          <span class="kda-label-a">A</span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <div class="stat-label">Minions</div>
+          <div class="stat-value" id="statCs">0</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Gold</div>
+          <div class="stat-value gold-val" id="statGold">0</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">Nivel</div>
+          <div class="stat-value" id="statLevel">1</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">CS/min</div>
+          <div class="stat-value" id="statCsMin">0.0</div>
+        </div>
+      </div>
+
+      <!-- Game Time -->
+      <div class="time-bar">
+        <span class="time-label">TIEMPO DE PARTIDA</span>
+        <span class="time-value" id="gameTime">0:00</span>
+      </div>
+
+      <!-- Objectives -->
+      <div class="objectives">
+        <div class="obj-title">Objetivos</div>
+        <div class="obj-row">
+          <span class="obj-name">🐉 Dragón</span>
+          <span class="obj-time" id="objDragon">—</span>
+        </div>
+        <div class="obj-row">
+          <span class="obj-name">🔮 Heraldo</span>
+          <span class="obj-time" id="objHerald">—</span>
+        </div>
+        <div class="obj-row">
+          <span class="obj-name">👁 Barón</span>
+          <span class="obj-time" id="objBaron">—</span>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="hud-footer">
+        <span class="hotkey-hint">Ocultar: <span class="hotkey-key">F8</span></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = window.require('electron');
+
+    // State
+    let gameTime = 0;
+    let localTick = null;
+
+    // DOM refs
+    const waitingState = document.getElementById('waitingState');
+    const gameContent  = document.getElementById('gameContent');
+    const statusDot    = document.getElementById('statusDot');
+
+    const elKills   = document.getElementById('statKills');
+    const elDeaths  = document.getElementById('statDeaths');
+    const elAssists = document.getElementById('statAssists');
+    const elCs      = document.getElementById('statCs');
+    const elGold    = document.getElementById('statGold');
+    const elLevel   = document.getElementById('statLevel');
+    const elCsMin   = document.getElementById('statCsMin');
+    const elTime    = document.getElementById('gameTime');
+    const elChamp   = document.getElementById('championName');
+    const elSumm    = document.getElementById('summonerName');
+    const elDragon  = document.getElementById('objDragon');
+    const elHerald  = document.getElementById('objHerald');
+    const elBaron   = document.getElementById('objBaron');
+
+    function fmt(secs) {
+      const m = Math.floor(secs / 60);
+      const s = Math.floor(secs % 60);
+      return m + ':' + String(s).padStart(2, '0');
+    }
+
+    function fmtGold(g) {
+      if (g >= 1000) return (g / 1000).toFixed(1) + 'k';
+      return String(g);
+    }
+
+    function updateObjectives(t) {
+      // Dragon: first spawn 5:00, respawn every 5:00
+      if (t < 300) {
+        elDragon.textContent = 'en ' + fmt(300 - t);
+        elDragon.className = 'obj-time upcoming';
+      } else {
+        const cycle = Math.floor((t - 300) / 300);
+        const nextSpawn = 300 + (cycle + 1) * 300;
+        const remaining = nextSpawn - t;
+        if (remaining < 30) {
+          elDragon.textContent = '⚡ ' + fmt(remaining);
+          elDragon.className = 'obj-time soon';
+        } else {
+          elDragon.textContent = fmt(remaining);
+          elDragon.className = 'obj-time upcoming';
+        }
+      }
+
+      // Herald: 8:00–14:00
+      if (t < 480) {
+        elHerald.textContent = 'en ' + fmt(480 - t);
+        elHerald.className = 'obj-time upcoming';
+      } else if (t <= 840) {
+        elHerald.textContent = '🟢 ACTIVO';
+        elHerald.className = 'obj-time active';
+      } else {
+        elHerald.textContent = 'Expirado';
+        elHerald.className = 'obj-time dead';
+      }
+
+      // Baron: 20:00
+      if (t < 1200) {
+        const remaining = 1200 - t;
+        if (remaining < 60) {
+          elBaron.textContent = '⚡ ' + fmt(remaining);
+          elBaron.className = 'obj-time soon';
+        } else {
+          elBaron.textContent = 'en ' + fmt(remaining);
+          elBaron.className = 'obj-time upcoming';
+        }
+      } else {
+        elBaron.textContent = '🟢 ACTIVO';
+        elBaron.className = 'obj-time active';
+      }
+    }
+
+    function updateDisplay(state) {
+      elKills.textContent   = state.kills;
+      elDeaths.textContent  = state.deaths;
+      elAssists.textContent = state.assists;
+      elCs.textContent      = state.cs;
+      elGold.textContent    = fmtGold(state.gold);
+      elLevel.textContent   = state.level;
+      elChamp.textContent   = state.championName || '—';
+      elSumm.textContent    = state.summonerName || '—';
+
+      const minutes = Math.max(1, Math.floor(state.gameTime / 60));
+      elCsMin.textContent = (state.cs / minutes).toFixed(1);
+
+      gameTime = state.gameTime;
+      elTime.textContent = fmt(gameTime);
+      updateObjectives(gameTime);
+    }
+
+    function showGame() {
+      waitingState.style.display = 'none';
+      gameContent.classList.add('active');
+      statusDot.style.background = '#22c55e';
+      statusDot.style.boxShadow = '0 0 6px #22c55e';
+    }
+
+    function showWaiting() {
+      waitingState.style.display = 'block';
+      gameContent.classList.remove('active');
+      statusDot.style.background = '#dc2626';
+      statusDot.style.boxShadow = '';
+      if (localTick) { clearInterval(localTick); localTick = null; }
+    }
+
+    // IPC from main process
+    ipcRenderer.on('live-data', (e, state) => {
+      if (!state) return;
+      showGame();
+      updateDisplay(state);
+
+      // local tick to update timer between polls
+      if (!localTick) {
+        localTick = setInterval(() => {
+          gameTime++;
+          elTime.textContent = fmt(gameTime);
+          updateObjectives(gameTime);
+        }, 1000);
+      }
+    });
+
+    ipcRenderer.on('game-ended', () => {
+      showWaiting();
+    });
+
+    // Toggle button
+    document.getElementById('toggleBtn').addEventListener('click', () => {
+      ipcRenderer.send('toggle-overlay');
+    });
+
+    // Initialize
+    showWaiting();
+  </script>
+</body>
+</html>

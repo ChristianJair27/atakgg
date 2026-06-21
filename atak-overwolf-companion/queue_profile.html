@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ATAK — Queue Profile</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:400px;overflow-x:hidden;user-select:none}
+:root{--red:#ef4444;--reddk:#991b1b;--goldlt:#f0e6d3;--gold:#c89b3c;--teal:#0bc4e3;--green:#22c55e}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;color:#fff;background:#000;
+  min-height:100vh;overflow-y:auto;
+}
+::-webkit-scrollbar{width:2px}
+::-webkit-scrollbar-thumb{background:rgba(239,68,68,.2);border-radius:2px}
+
+/* Exact aka.gg background treatment */
+.bg-fixed{position:fixed;inset:0;pointer-events:none;z-index:0}
+.bg-red-grad{background:radial-gradient(ellipse 100% 60% at 50% -10%,rgba(127,29,29,.35) 0%,transparent 70%)}
+.bg-grid{
+  opacity:.025;
+  background-image:linear-gradient(rgba(255,255,255,.5) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.5) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+
+#root{position:relative;z-index:1;padding:10px 12px 14px;display:flex;flex-direction:column;gap:8px}
+
+/* ── Header ── */
+#header{display:flex;align-items:center;justify-content:space-between;padding:2px 0;-webkit-app-region:drag}
+#brand{display:flex;align-items:center;gap:6px}
+#brand-gem{width:18px;height:18px;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);
+  background:linear-gradient(135deg,#ef4444,#7f1d1d);display:flex;align-items:center;justify-content:center;
+  font-size:7px;font-weight:900;color:#fff;flex-shrink:0}
+#brand-name{font-size:12px;font-weight:900;letter-spacing:.1em;color:#ef4444}
+#brand-sub{font-size:7px;letter-spacing:.25em;color:rgba(239,68,68,.4);font-weight:700}
+#close-btn{-webkit-app-region:no-drag;width:22px;height:22px;border-radius:6px;
+  background:transparent;border:none;cursor:pointer;color:rgba(255,255,255,.25);font-size:13px;
+  transition:.15s;display:flex;align-items:center;justify-content:center}
+#close-btn:hover{background:rgba(239,68,68,.15);color:var(--red)}
+
+/* Queue banner */
+#queue-banner{
+  display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.18);border-radius:10px;
+}
+.q-dot{width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0;
+  animation:qpulse 1.1s ease-in-out infinite}
+@keyframes qpulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.25)}}
+#queue-lbl{font-size:7.5px;font-weight:700;letter-spacing:.25em;color:var(--red);flex:1}
+#queue-timer{font-family:monospace;font-size:13px;font-weight:900;color:rgba(239,68,68,.8)}
+#readycheck-banner{
+  display:none;align-items:center;gap:10px;padding:8px 12px;
+  background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.25);border-radius:10px;
+  animation:rcpulse .6s ease-in-out infinite alternate;
+}
+@keyframes rcpulse{from{box-shadow:0 0 0px rgba(34,197,94,.1)}to{box-shadow:0 0 14px rgba(34,197,94,.3)}}
+#readycheck-banner .q-dot{background:var(--green)}
+#readycheck-banner #queue-lbl{color:var(--green)}
+
+/* Glass card */
+.card{
+  background:rgba(255,255,255,.04);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.07);border-radius:12px;position:relative;overflow:hidden;
+}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent)}
+.card.red-top::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.35),transparent)}
+.card.gold-top::before{background:linear-gradient(90deg,transparent,rgba(200,155,60,.35),transparent)}
+.card.teal-top::before{background:linear-gradient(90deg,transparent,rgba(11,196,227,.3),transparent)}
+
+.lbl{font-size:6.5px;font-weight:700;letter-spacing:.22em;color:rgba(255,255,255,.25)}
+.sec-hdr{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.sec-hdr .lbl{flex:none}
+.sec-hdr::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.05)}
+
+/* ── Player header card ── */
+#player-card{padding:12px 14px}
+#player-main{display:flex;align-items:center;gap:12px}
+#profile-icon-wrap{position:relative;flex-shrink:0}
+#profile-icon{width:62px;height:62px;border-radius:10px;object-fit:cover;display:block;
+  border:2px solid rgba(239,68,68,.35)}
+#profile-icon-placeholder{width:62px;height:62px;border-radius:10px;
+  background:linear-gradient(135deg,rgba(127,29,29,.5),rgba(239,68,68,.1));
+  border:2px solid rgba(239,68,68,.25);display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:900;color:rgba(239,68,68,.4)}
+#plv-badge{position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);
+  font-size:9px;font-weight:800;color:#fff;padding:1px 7px;
+  background:rgba(239,68,68,.85);border-radius:3px;white-space:nowrap}
+#player-info{flex:1;min-width:0}
+#player-name{font-size:18px;font-weight:900;letter-spacing:-.01em;color:#fff;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#player-tag{font-size:11px;font-weight:600;color:rgba(255,255,255,.35)}
+#player-status-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+#player-region-tag{font-size:7px;font-weight:700;letter-spacing:.2em;color:rgba(239,68,68,.8);
+  padding:2px 7px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:20px}
+
+/* ── Rank cards ── */
+#rank-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.rank-card{padding:10px 12px}
+.rank-queue-lbl{font-size:5.5px;font-weight:700;letter-spacing:.22em;margin-bottom:6px}
+.rank-tier-row{display:flex;align-items:flex-end;gap:6px;margin-bottom:2px}
+.rank-tier-txt{font-size:16px;font-weight:900;line-height:1}
+.rank-tier-txt.challenger{color:#f0c060}
+.rank-tier-txt.grandmaster{color:#f87171}
+.rank-tier-txt.master{color:#a78bfa}
+.rank-tier-txt.diamond{color:#60a5fa}
+.rank-tier-txt.emerald{color:#4ade80}
+.rank-tier-txt.platinum{color:#2dd4bf}
+.rank-tier-txt.gold{color:var(--gold)}
+.rank-tier-txt.silver{color:#94a3b8}
+.rank-tier-txt.bronze{color:#b87340}
+.rank-tier-txt.iron{color:#7f7f7f}
+.rank-tier-txt.unranked{color:rgba(255,255,255,.25)}
+.rank-lp{font-size:10px;font-weight:700;color:rgba(255,255,255,.4);margin-bottom:2px}
+.rank-wl{font-size:8px;color:rgba(255,255,255,.3);display:flex;gap:4px;align-items:center}
+.rank-wr-pill{font-size:7px;font-weight:700;padding:1px 6px;border-radius:20px}
+.rank-wr-pill.high{background:rgba(34,197,94,.12);color:#4ade80;border:1px solid rgba(34,197,94,.25)}
+.rank-wr-pill.low{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2)}
+.rank-wr-pill.med{background:rgba(200,155,60,.1);color:var(--gold);border:1px solid rgba(200,155,60,.25)}
+.rank-unranked-txt{font-size:10px;color:rgba(255,255,255,.18);font-style:italic;padding:8px 0}
+
+/* ── Quick stats row ── */
+#stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.stat-card{padding:8px 10px;text-align:center}
+.stat-v{font-size:16px;font-weight:900;color:#fff;line-height:1}
+.stat-v.green{color:var(--green)}.stat-v.red{color:var(--red)}.stat-v.teal{color:var(--teal)}.stat-v.gold{color:var(--gold)}
+.stat-l{font-size:6px;font-weight:700;letter-spacing:.18em;color:rgba(255,255,255,.22);margin-top:3px}
+.stat-loading{font-size:10px;color:rgba(255,255,255,.18);animation:shimm 1.4s ease-in-out infinite}
+@keyframes shimm{0%,100%{opacity:.3}50%{opacity:.8}}
+
+/* ── Top Champions ── */
+#champs-section .card{padding:12px 14px}
+.champ-row{display:flex;gap:6px}
+.champ-slot{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.champ-slot img{width:46px;height:46px;border-radius:9px;object-fit:cover;
+  border:1.5px solid rgba(255,255,255,.08);transition:.15s}
+.champ-slot img:hover{border-color:rgba(239,68,68,.45);transform:scale(1.05)}
+.champ-slot .champ-name{font-size:7px;font-weight:700;color:rgba(255,255,255,.5);
+  text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52px}
+.champ-slot .champ-lv{font-size:7px;font-weight:700;padding:1px 4px;border-radius:3px;
+  background:rgba(200,155,60,.12);border:1px solid rgba(200,155,60,.25);color:var(--gold)}
+.champ-slot .champ-pts{font-size:6px;color:rgba(255,255,255,.2)}
+
+/* ── Recent activity (from backend) ── */
+#activity-section .card{padding:12px 14px}
+.activity-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.act-box{padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px}
+.act-v{font-size:15px;font-weight:900;color:#fff;line-height:1}
+.act-v.wr-high{color:var(--green)}.act-v.wr-low{color:var(--red)}.act-v.wr-med{color:var(--gold)}
+.act-l{font-size:6px;letter-spacing:.18em;color:rgba(255,255,255,.2);font-weight:700;margin-top:2px}
+.act-sub{font-size:8px;color:rgba(255,255,255,.3);margin-top:2px}
+.top-champ-row{display:flex;align-items:center;gap:6px;padding:4px 0;
+  border-bottom:1px solid rgba(255,255,255,.04)}
+.top-champ-row:last-child{border-bottom:none}
+.tci{width:22px;height:22px;border-radius:5px;object-fit:cover;flex-shrink:0;
+  border:1px solid rgba(255,255,255,.08)}
+.tc-name{font-size:9px;font-weight:700;color:rgba(255,255,255,.7);flex:1}
+.tc-wr{font-size:8px;font-weight:700;color:rgba(255,255,255,.4)}
+.act-loading{font-size:8px;color:rgba(255,255,255,.18);font-style:italic;animation:shimm 1.4s ease-in-out infinite}
+
+/* ── Open profile button ── */
+#open-btn{
+  width:100%;padding:12px;border:none;cursor:pointer;border-radius:10px;
+  font-size:11px;font-weight:900;letter-spacing:.15em;color:#fff;
+  background:linear-gradient(135deg,#ef4444,#b91c1c);
+  box-shadow:0 0 24px rgba(239,68,68,.2);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:.2s;position:relative;overflow:hidden;
+  -webkit-app-region:no-drag;
+}
+#open-btn:hover{background:linear-gradient(135deg,#f87171,#ef4444);box-shadow:0 0 36px rgba(239,68,68,.4)}
+#open-btn::before{content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);
+  transition:.5s;pointer-events:none}
+#open-btn:hover::before{left:150%}
+.ob-arrow{font-size:14px;transition:transform .2s}
+#open-btn:hover .ob-arrow{transform:translateX(3px)}
+</style>
+</head>
+<body>
+<!-- Background layers (fixed, mirrors aka.gg exactly) -->
+<div class="bg-fixed bg-red-grad"></div>
+<div class="bg-fixed bg-grid"></div>
+
+<div id="root">
+
+  <!-- HEADER -->
+  <div id="header">
+    <div id="brand">
+      <div id="brand-gem">A</div>
+      <span id="brand-name">ATAK</span>
+      <span id="brand-sub">AI COACH</span>
+    </div>
+    <button id="close-btn" onclick="closeMe()">✕</button>
+  </div>
+
+  <!-- QUEUE BANNER -->
+  <div id="queue-banner">
+    <div class="q-dot"></div>
+    <span id="queue-lbl">IN QUEUE</span>
+    <span id="queue-timer">0:00</span>
+  </div>
+  <div id="readycheck-banner" style="display:none">
+    <div class="q-dot" style="background:var(--green)"></div>
+    <span id="queue-lbl" style="color:var(--green)">MATCH FOUND — ACCEPT</span>
+    <span id="queue-timer" style="color:var(--green)">!</span>
+  </div>
+
+  <!-- PLAYER CARD -->
+  <div class="card red-top" id="player-card">
+    <div id="player-main">
+      <div id="profile-icon-wrap">
+        <div id="profile-icon-placeholder" style="display:none">?</div>
+        <img id="profile-icon" src="" alt="" style="display:none" onerror="this.style.display='none';document.getElementById('profile-icon-placeholder').style.display='flex'" />
+        <div id="plv-badge">Lv —</div>
+      </div>
+      <div id="player-info">
+        <div id="player-name">Loading...</div>
+        <span id="player-tag">#—</span>
+        <div id="player-status-row">
+          <span id="player-region-tag">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RANK CARDS -->
+  <div id="rank-row">
+    <div class="card gold-top rank-card" id="solo-card">
+      <div class="rank-queue-lbl lbl">SOLO / DUO</div>
+      <div class="rank-unranked-txt" id="solo-unranked">Unranked</div>
+      <div id="solo-data" style="display:none">
+        <div class="rank-tier-row">
+          <span class="rank-tier-txt unranked" id="solo-tier">—</span>
+          <span class="rank-lp" id="solo-lp">— LP</span>
+        </div>
+        <div class="rank-wl">
+          <span id="solo-wl">— W / — L</span>
+          <span class="rank-wr-pill med" id="solo-wr">—%</span>
+        </div>
+      </div>
+    </div>
+    <div class="card gold-top rank-card" id="flex-card">
+      <div class="rank-queue-lbl lbl">FLEX 5v5</div>
+      <div class="rank-unranked-txt" id="flex-unranked">Unranked</div>
+      <div id="flex-data" style="display:none">
+        <div class="rank-tier-row">
+          <span class="rank-tier-txt unranked" id="flex-tier">—</span>
+          <span class="rank-lp" id="flex-lp">— LP</span>
+        </div>
+        <div class="rank-wl">
+          <span id="flex-wl">— W / — L</span>
+          <span class="rank-wr-pill med" id="flex-wr">—%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATS ROW -->
+  <div id="stats-row">
+    <div class="card stat-card">
+      <div class="stat-v" id="sv-wr"><span class="stat-loading">...</span></div>
+      <div class="stat-l">WIN RATE</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-v" id="sv-kda"><span class="stat-loading">...</span></div>
+      <div class="stat-l">KDA</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-v" id="sv-cs"><span class="stat-loading">...</span></div>
+      <div class="stat-l">CS / MIN</div>
+    </div>
+  </div>
+
+  <!-- TOP CHAMPIONS (from LCU mastery) -->
+  <div id="champs-section">
+    <div class="card">
+      <div style="padding:12px 14px">
+        <div class="sec-hdr"><span class="lbl">TOP CHAMPIONS</span></div>
+        <div class="champ-row" id="champ-row">
+          <div class="champ-slot"><div style="width:46px;height:46px;border-radius:9px;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.06)"></div></div>
+          <div class="champ-slot"><div style="width:46px;height:46px;border-radius:9px;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.06)"></div></div>
+          <div class="champ-slot"><div style="width:46px;height:46px;border-radius:9px;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.06)"></div></div>
+          <div class="champ-slot"><div style="width:46px;height:46px;border-radius:9px;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.06)"></div></div>
+          <div class="champ-slot"><div style="width:46px;height:46px;border-radius:9px;background:rgba(255,255,255,.03);border:1.5px solid rgba(255,255,255,.06)"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECENT ACTIVITY (from backend) -->
+  <div id="activity-section">
+    <div class="card teal-top">
+      <div style="padding:12px 14px">
+        <div class="sec-hdr"><span class="lbl">RECENT PERFORMANCE (10 GAMES)</span></div>
+        <div id="activity-loading" class="act-loading">Fetching recent stats...</div>
+        <div id="activity-data" style="display:none">
+          <div class="activity-grid" style="margin-bottom:8px">
+            <div class="act-box">
+              <div class="act-v" id="act-wr">—%</div>
+              <div class="act-l">WIN RATE</div>
+              <div class="act-sub" id="act-games">— games</div>
+            </div>
+            <div class="act-box">
+              <div class="act-v" id="act-kda">—</div>
+              <div class="act-l">AVG KDA</div>
+              <div class="act-sub" id="act-cs">— CS/min</div>
+            </div>
+          </div>
+          <div class="sec-hdr" style="margin-top:4px"><span class="lbl">MOST PLAYED</span></div>
+          <div id="top-champs-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPEN PROFILE BUTTON -->
+  <button id="open-btn" onclick="openProfile()">
+    <span>⊹</span>
+    OPEN FULL PROFILE
+    <span class="ob-arrow">→</span>
+  </button>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const $ = id => document.getElementById(id)
+const BACKEND = 'http://localhost:4000'
+let ddPatch = null, profileRiotId = null, profilePlatform = null
+let queueStart = null, queueTimerInterval = null
+
+// ── Queue timer ──────────────────────────────────────────────────────────
+function startQueueTimer() {
+  queueStart = Date.now()
+  if (queueTimerInterval) clearInterval(queueTimerInterval)
+  queueTimerInterval = setInterval(() => {
+    const sec = Math.floor((Date.now() - queueStart) / 1000)
+    const m = Math.floor(sec / 60), s = sec % 60
+    $('queue-timer').textContent = m + ':' + String(s).padStart(2,'0')
+  }, 1000)
+}
+
+// ── DDragon ──────────────────────────────────────────────────────────────
+async function getPatch() {
+  if (ddPatch) return ddPatch
+  try { ddPatch = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json())[0] }
+  catch { ddPatch = '15.1.1' }
+  return ddPatch
+}
+const DD_KEY = {'Wukong':'MonkeyKing','Nunu & Willump':'Nunu','Renata Glasc':'Renata'}
+function champImg(ddKey, patch) {
+  const k = DD_KEY[ddKey] || ddKey
+  return k && patch ? `https://ddragon.leagueoflegends.com/cdn/${patch}/img/champion/${k}.png` : ''
+}
+function profileIconImg(iconId, patch) {
+  return iconId && patch ? `https://ddragon.leagueoflegends.com/cdn/${patch}/img/profileicon/${iconId}.png` : ''
+}
+
+// ── Tier color class ─────────────────────────────────────────────────────
+function tierClass(tier='') {
+  return (tier||'unranked').toLowerCase().replace(/[^a-z]/g,'')
+}
+function wrPillClass(wr) {
+  if (wr >= 55) return 'high'
+  if (wr < 45) return 'low'
+  return 'med'
+}
+
+// ── Fill player header ───────────────────────────────────────────────────
+async function fillPlayer(summoner) {
+  const patch = await getPatch()
+  const name = summoner.displayName || summoner.gameName || summoner.internalName || 'Summoner'
+  const tag  = summoner.tagLine || ''
+  $('player-name').textContent = name
+  $('player-tag').textContent  = tag ? '#' + tag : ''
+  $('plv-badge').textContent   = 'Lv ' + (summoner.summonerLevel || '—')
+  profileRiotId = tag ? name + '#' + tag : name
+  const iconId = summoner.profileIconId
+  if (iconId && patch) {
+    const img = $('profile-icon')
+    img.src = profileIconImg(iconId, patch)
+    img.style.display = 'block'
+    $('profile-icon-placeholder').style.display = 'none'
+  } else {
+    $('profile-icon-placeholder').style.display = 'flex'
+    $('profile-icon-placeholder').textContent = name.charAt(0).toUpperCase()
+  }
+  if (window.gsap) gsap.from('#player-card', { opacity:0, y:8, duration:.4, ease:'power2.out' })
+}
+
+// ── Fill ranked stats ────────────────────────────────────────────────────
+function fillRank(ranked) {
+  if (!ranked) return
+  const queues = ranked.queueMap || {}
+  fillQueueCard('solo', queues['RANKED_SOLO_5x5'])
+  fillQueueCard('flex', queues['RANKED_FLEX_5x5'])
+  if (window.gsap) gsap.from('#rank-row > *', { opacity:0, y:8, duration:.35, stagger:.06, ease:'power2.out' })
+}
+function fillQueueCard(key, q) {
+  if (!q || !q.tier || q.tier === 'UNRANKED' || q.tier === 'NONE') {
+    $(key + '-unranked').style.display = 'block'
+    $(key + '-data').style.display = 'none'
+    return
+  }
+  $(key + '-unranked').style.display = 'none'
+  $(key + '-data').style.display = 'block'
+  const tierEl = $(key + '-tier')
+  const tierName = q.tier.charAt(0).toUpperCase() + q.tier.slice(1).toLowerCase()
+  tierEl.textContent = tierName + (q.rank ? ' ' + q.rank : '')
+  tierEl.className = 'rank-tier-txt ' + tierClass(q.tier)
+  $(key + '-lp').textContent = (q.leaguePoints || 0) + ' LP'
+  const w = q.wins || 0, l = q.losses || 0
+  $(key + '-wl').textContent = w + 'W / ' + l + 'L'
+  const wr = w + l > 0 ? Math.round((w/(w+l))*100) : 0
+  const wrEl = $(key + '-wr')
+  wrEl.textContent = wr + '%'
+  wrEl.className = 'rank-wr-pill ' + wrPillClass(wr)
+  // Override quick stats winrate from LCU ranked (fast)
+  if (key === 'solo' && w + l > 0) fillStatFromRanked(wr, w, l)
+}
+function fillStatFromRanked(wr, w, l) {
+  const svWr = $('sv-wr')
+  svWr.textContent = wr + '%'
+  svWr.className = 'stat-v ' + (wr >= 55 ? 'green' : wr < 45 ? 'red' : 'gold')
+}
+
+// ── Fill masteries ───────────────────────────────────────────────────────
+async function fillMasteries(masteries) {
+  if (!masteries || !masteries.length) return
+  const patch = await getPatch()
+  const row = $('champ-row')
+  row.innerHTML = ''
+  masteries.slice(0, 5).forEach(m => {
+    const slot = document.createElement('div'); slot.className = 'champ-slot'
+    const img = document.createElement('img')
+    img.src = champImg(m.ddKey, patch)
+    img.onerror = () => { img.style.opacity = '.08' }
+    slot.appendChild(img)
+    const nm = document.createElement('div'); nm.className = 'champ-name'
+    nm.textContent = m.champName || '—'; slot.appendChild(nm)
+    const lv = document.createElement('div'); lv.className = 'champ-lv'
+    lv.textContent = 'M' + (m.championLevel || '—'); slot.appendChild(lv)
+    const pts = document.createElement('div'); pts.className = 'champ-pts'
+    pts.textContent = m.championPoints ? ((m.championPoints/1000).toFixed(0) + 'k') : ''
+    slot.appendChild(pts)
+    row.appendChild(slot)
+  })
+  if (window.gsap) gsap.from('#champ-row > *', { opacity:0, scale:.8, duration:.3, stagger:.06, ease:'back.out(1.4)' })
+}
+
+// ── Fetch backend stats ──────────────────────────────────────────────────
+async function fetchBackendStats(riotId) {
+  if (!riotId) return
+  try {
+    const url = BACKEND + '/api/players/overview?riotId=' + encodeURIComponent(riotId) + '&count=10'
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(res.status)
+    const data = await res.json()
+    if (!data.ok) throw new Error('no data')
+    profilePlatform = data.platform
+    if (profilePlatform) $('player-region-tag').textContent = profilePlatform.toUpperCase()
+    const s = data.summary
+    if (s) {
+      $('act-wr').textContent = s.winrate + '%'
+      $('act-wr').className = 'act-v ' + (s.winrate >= 55 ? 'wr-high' : s.winrate < 45 ? 'wr-low' : 'wr-med')
+      $('act-games').textContent = s.games + ' games'
+      $('act-kda').textContent = s.kda.toFixed(2)
+      $('act-kda').className = 'act-v ' + (s.kda >= 3 ? 'green' : s.kda < 1.5 ? 'red' : 'teal')
+      $('act-cs').textContent = s.csPerMin.toFixed(1) + ' CS/min'
+      // Quick stats row (overrides LCU derived values with match-based data)
+      $('sv-wr').textContent = s.winrate + '%'
+      $('sv-wr').className = 'stat-v ' + (s.winrate >= 55 ? 'green' : s.winrate < 45 ? 'red' : 'gold')
+      $('sv-kda').textContent = s.kda.toFixed(2)
+      $('sv-kda').className = 'stat-v ' + (s.kda >= 3 ? 'teal' : s.kda < 1.5 ? 'red' : 'gold')
+      $('sv-cs').textContent = s.csPerMin.toFixed(1)
+      $('sv-cs').className = 'stat-v gold'
+    }
+    // Top champion performance from recent matches
+    const recentChamps = s?.recentChamps || []
+    const patch = await getPatch()
+    const list = $('top-champs-list'); list.innerHTML = ''
+    // We need champion names from the backend. But overview returns championId.
+    // Try to build image from CDragon (doesn't need champion name)
+    recentChamps.slice(0, 4).forEach(c => {
+      const row = document.createElement('div'); row.className = 'top-champ-row'
+      const img = document.createElement('img'); img.className = 'tci'
+      img.src = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${c.championId}.png`
+      img.onerror = () => { img.style.opacity = '.08' }
+      row.appendChild(img)
+      const nm = document.createElement('span'); nm.className = 'tc-name'
+      nm.textContent = 'Champion ' + c.championId; row.appendChild(nm)  // name resolved later
+      const wr = document.createElement('span'); wr.className = 'tc-wr'
+      wr.textContent = c.winrate.toFixed(0) + '% · ' + c.games + 'g'
+      wr.style.color = c.winrate >= 55 ? 'var(--green)' : c.winrate < 45 ? 'var(--red)' : 'var(--gold)'
+      row.appendChild(wr)
+      list.appendChild(row)
+    })
+    // Resolve champion names from DDragon
+    if (recentChamps.length && patch) {
+      try {
+        const cdData = await (await fetch('https://ddragon.leagueoflegends.com/cdn/' + patch + '/data/en_US/champion.json')).json()
+        const byKey = {}
+        for (const c of Object.values(cdData.data)) byKey[Number(c.key)] = c.name
+        list.querySelectorAll('.tc-name').forEach((el, i) => {
+          if (recentChamps[i]) el.textContent = byKey[recentChamps[i].championId] || ('Champ ' + recentChamps[i].championId)
+        })
+      } catch {}
+    }
+    $('activity-loading').style.display = 'none'
+    $('activity-data').style.display = 'block'
+    if (window.gsap) gsap.from('#activity-data > *', { opacity:0, y:6, duration:.3, stagger:.08, ease:'power2.out' })
+  } catch (err) {
+    $('activity-loading').textContent = 'Stats unavailable'
+    $('activity-loading').style.animationName = 'none'
+    $('activity-loading').style.opacity = '.3'
+  }
+}
+
+// ── Open full profile in browser ─────────────────────────────────────────
+function openProfile() {
+  if (!profileRiotId) return
+  const region = profilePlatform || 'la1'
+  const url = 'http://192.168.1.79:8080/stats/' + region + '/' + encodeURIComponent(profileRiotId)
+  if (typeof overwolf !== 'undefined') overwolf.utils.openUrlInDefaultBrowser(url)
+  else window.open(url, '_blank')
+}
+function closeMe() {
+  if (typeof overwolf !== 'undefined') overwolf.windows.getCurrentWindow(r => { if (r.status==='success') overwolf.windows.close(r.window.id) })
+}
+
+// ── State: ready check ───────────────────────────────────────────────────
+function setReadyCheck(on) {
+  $('queue-banner').style.display = on ? 'none' : 'flex'
+  $('readycheck-banner').style.display = on ? 'flex' : 'none'
+}
+
+// ── Message handler ──────────────────────────────────────────────────────
+if (typeof overwolf !== 'undefined') {
+  overwolf.windows.onMessageReceived.addListener(msg => {
+    const c = msg?.content; if (!c) return
+    if (c.type === 'queue-init' && c.data) {
+      const { summoner, ranked, masteries } = c.data
+      if (summoner) fillPlayer(summoner)
+      if (ranked)   fillRank(ranked)
+      if (masteries && masteries.length) fillMasteries(masteries)
+      if (summoner) {
+        const riotId = (summoner.gameName || summoner.displayName || '') + (summoner.tagLine ? '#' + summoner.tagLine : '')
+        if (riotId && riotId !== '#') fetchBackendStats(riotId)
+      }
+    }
+    if (c.type === 'queue-phase' && c.phase) {
+      setReadyCheck(c.phase === 'ReadyCheck')
+    }
+  })
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────
+startQueueTimer()
+getPatch()
+// GSAP entrance for entire layout
+if (typeof gsap !== 'undefined') {
+  gsap.from(['#queue-banner','#player-card','#rank-row','#stats-row','#champs-section','#activity-section','#open-btn'],
+    { opacity:0, y:14, duration:.5, stagger:.06, ease:'power3.out', delay:.08 })
+}
+</script>
+</body>
+</html>

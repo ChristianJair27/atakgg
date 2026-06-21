@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>ATAK.GG Companion</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #050505;
+      color: #f1f1f1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .container {
+      text-align: center;
+      max-width: 480px;
+      padding: 40px;
+    }
+    .logo {
+      font-size: 48px;
+      font-weight: 900;
+      letter-spacing: -2px;
+      color: #dc2626;
+      margin-bottom: 8px;
+    }
+    .tagline {
+      font-size: 14px;
+      color: #555;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 40px;
+    }
+    .status-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .status-row:last-child { border-bottom: none; }
+    .status-label { color: #666; }
+    .status-val { font-weight: 600; }
+    .status-val.ok { color: #22c55e; }
+    .status-val.waiting { color: #f59e0b; }
+    .open-btn {
+      display: inline-block;
+      padding: 12px 28px;
+      background: #dc2626;
+      color: white;
+      font-weight: 700;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      border-radius: 8px;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+    }
+    .open-btn:hover { background: #ef4444; }
+    .hint {
+      margin-top: 20px;
+      font-size: 11px;
+      color: #333;
+      line-height: 1.8;
+    }
+    .overlay-hint {
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: rgba(220,38,38,0.06);
+      border: 1px solid rgba(220,38,38,0.15);
+      border-radius: 8px;
+      font-size: 11px;
+      color: #888;
+      line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">ATAK.GG</div>
+    <div class="tagline">In-Game Companion</div>
+
+    <div class="status-card">
+      <div class="status-row">
+        <span class="status-label">Companion App</span>
+        <span class="status-val ok">✓ Activo</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Overlay Engine</span>
+        <span class="status-val ok" id="overlayStatus">Cargando...</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">League of Legends</span>
+        <span class="status-val waiting" id="gameStatus">Esperando...</span>
+      </div>
+    </div>
+
+    <a class="open-btn" href="https://atak.gg" target="_blank">
+      Abrir ATAK.GG
+    </a>
+
+    <div class="overlay-hint">
+      🎮 Inicia League of Legends y el HUD de ATAK.GG aparecerá automáticamente sobre el juego.<br/>
+      Usa <strong>F8</strong> para mostrar/ocultar el overlay.
+    </div>
+
+    <div class="hint">
+      ATAK.GG Companion • v1.0.0<br/>
+      Powered by Overwolf ow-electron
+    </div>
+  </div>
+
+  <script>
+    if (window.atakCompanion) {
+      window.atakCompanion.getStatus().then(status => {
+        const el = document.getElementById('overlayStatus');
+        if (el) {
+          el.textContent = status.overlayReady ? '✓ Listo' : 'Cargando...';
+          el.className = 'status-val ' + (status.overlayReady ? 'ok' : 'waiting');
+        }
+      });
+
+      window.atakCompanion.onGameInjected((info) => {
+        const el = document.getElementById('gameStatus');
+        if (el) {
+          el.textContent = '✓ Detectado';
+          el.className = 'status-val ok';
+        }
+      });
+
+      window.atakCompanion.onGameExit(() => {
+        const el = document.getElementById('gameStatus');
+        if (el) {
+          el.textContent = 'Esperando...';
+          el.className = 'status-val waiting';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

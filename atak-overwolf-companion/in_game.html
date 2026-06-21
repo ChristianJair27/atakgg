@@ -1,448 +1,399 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>ATAK AI Companion</title>
-  <style>
-    /* ── Reset ── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: rgba(10, 10, 10, 0.96);
-      color: #f1f5f9;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      user-select: none;
-      overflow: hidden;
-      width: 420px;
-      height: 520px;
-    }
+<meta charset="UTF-8">
+<title>ATAK — In Game</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:380px;height:520px;overflow:hidden;user-select:none}
 
-    ::-webkit-scrollbar       { width: 2px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(239,68,68,0.3); border-radius: 1px; }
+:root{
+  --gold:    #c89b3c;
+  --gold-lt: #f0e6d3;
+  --gold-dim:#785a28;
+  --teal:    #0bc4e3;
+  --green:   #22c55e;
+  --red:     #ef4444;
+  --purple:  #a855f7;
+  --glass:   rgba(255,255,255,.05);
+  --glass-b: rgba(255,255,255,.08);
+  --blur:    blur(24px) saturate(140%);
+  --radius:  12px;
+}
 
-    /* ── Drag region (Overwolf) ── */
-    #header { -webkit-app-region: drag; }
-    .no-drag { -webkit-app-region: no-drag; }
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;
+  color:#fff;
+  background:
+    radial-gradient(ellipse 90% 50% at 15% -5%,rgba(33,82,255,.14),transparent 55%),
+    radial-gradient(ellipse 70% 40% at 85% 105%,rgba(121,40,202,.1),transparent 55%),
+    radial-gradient(ellipse 100% 25% at 50% 0%,rgba(11,196,227,.06),transparent 40%),
+    linear-gradient(170deg,#010a13 0%,#060b1a 100%);
+}
+::-webkit-scrollbar{width:2px}
+::-webkit-scrollbar-thumb{background:rgba(200,155,60,.25);border-radius:2px}
 
-    /* ── Layout ── */
-    #root {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      border: 1px solid rgba(239,68,68,0.12);
-    }
+/* ── Glass panel ── */
+.g{
+  background:var(--glass);
+  backdrop-filter:var(--blur);
+  -webkit-backdrop-filter:var(--blur);
+  border:1px solid var(--glass-b);
+  border-radius:var(--radius);
+  position:relative;overflow:hidden;
+}
+.g::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent);
+  pointer-events:none;
+}
+.g.gold-top::before{background:linear-gradient(90deg,transparent,rgba(200,155,60,.45),transparent)}
+.g.red-top::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.5),transparent)}
 
-    /* ── Header ── */
-    #header {
-      height: 42px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 10px 0 12px;
-      background: rgba(0,0,0,0.8);
-      border-bottom: 1px solid rgba(239,68,68,0.1);
-    }
-    #brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    #brand-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 2px;
-      background: #ef4444;
-      box-shadow: 0 0 8px #ef4444;
-    }
-    #brand-name {
-      font-size: 11px;
-      font-weight: 900;
-      letter-spacing: 0.35em;
-      color: #fff;
-    }
-    #brand-sub {
-      font-size: 8px;
-      font-weight: 600;
-      letter-spacing: 0.3em;
-      color: #374151;
-    }
+/* ── Root layout ── */
+#root{display:flex;flex-direction:column;height:100vh;padding:8px;gap:6px}
 
-    /* Status badge */
-    #status-badge {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-    #live-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #ef4444;
-      display: none;
-    }
-    #live-dot.active {
-      display: block;
-      animation: pulse-dot 1.8s ease-in-out infinite;
-    }
-    #status-text {
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.3em;
-      color: #374151;
-    }
-    #status-text.live { color: #f87171; }
+/* ── Header ── */
+#hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;-webkit-app-region:drag;
+}
+#brand{display:flex;align-items:center;gap:7px}
+#brand-gem{
+  width:22px;height:22px;flex-shrink:0;
+  clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);
+  background:linear-gradient(135deg,#c89b3c,#785a28);
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:900;color:#010a13;
+}
+#brand-nm{font-size:13px;font-weight:800;letter-spacing:.06em;color:var(--gold)}
+#live-pill{
+  display:none;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:20px;font-size:7px;font-weight:700;letter-spacing:.2em;
+  color:var(--teal);background:rgba(11,196,227,.08);border:1px solid rgba(11,196,227,.25);
+}
+#live-pill.on{display:flex}
+#live-dot{width:5px;height:5px;border-radius:50%;background:var(--teal)}
+#hdr-right{display:flex;align-items:center;gap:8px;-webkit-app-region:no-drag}
+#game-time{
+  font-family:'Segoe UI',monospace;font-size:17px;font-weight:900;
+  color:var(--gold-lt);letter-spacing:.04em;
+}
+#close-btn{
+  width:22px;height:22px;background:transparent;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:rgba(255,255,255,.3);border-radius:6px;transition:.15s;
+}
+#close-btn:hover{background:rgba(239,68,68,.15);color:var(--red)}
 
-    /* Close button */
-    #close-btn {
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 15px;
-      color: #4b5563;
-      background: transparent;
-      border: none;
-      border-radius: 3px;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
-      -webkit-app-region: no-drag;
-    }
-    #close-btn:hover { background: rgba(239,68,68,0.12); color: #f87171; }
+/* ── Waiting ── */
+#waiting{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+}
+#wait-orb{
+  width:48px;height:48px;border-radius:50%;
+  background:radial-gradient(circle at 40% 35%,rgba(200,155,60,.15),rgba(200,155,60,.02));
+  border:1px solid rgba(200,155,60,.2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;color:rgba(200,155,60,.25);
+  animation:float 4s ease-in-out infinite;
+}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+#wait-t{font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(200,155,60,.35)}
+#wait-s{font-size:8px;color:rgba(255,255,255,.18);text-align:center;line-height:1.8;max-width:180px}
 
-    /* ── Game time bar ── */
-    #game-bar {
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 14px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      background: rgba(0,0,0,0.3);
-    }
-    #game-timer {
-      font-family: monospace;
-      font-weight: 900;
-      font-size: 28px;
-      letter-spacing: -1px;
-      color: #fff;
-    }
-    #game-mode {
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.3em;
-      color: #374151;
-      margin-top: 3px;
-    }
-    #gold-display {
-      text-align: right;
-    }
-    #gold-value {
-      font-family: monospace;
-      font-weight: 700;
-      font-size: 16px;
-      color: #fbbf24;
-    }
-    #gold-label {
-      font-size: 8px;
-      letter-spacing: 0.2em;
-      color: #4b5563;
-      margin-top: 2px;
-    }
+/* ── Live ── */
+#live{display:none;flex-direction:column;flex:1;gap:6px;overflow:hidden}
 
-    /* ── Player stat strip ── */
-    #stat-strip {
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 14px;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      background: #0d0d0d;
-      gap: 8px;
-    }
-    .stat-box { text-align: center; }
-    .stat-value {
-      font-family: monospace;
-      font-weight: 700;
-      font-size: 15px;
-      color: #f1f5f9;
-      line-height: 1.1;
-    }
-    .stat-label {
-      font-size: 8px;
-      letter-spacing: 0.15em;
-      color: #4b5563;
-      margin-top: 3px;
-      text-transform: uppercase;
-    }
-    .kda-row {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      font-family: monospace;
-      font-weight: 700;
-      font-size: 15px;
-    }
-    .k { color: #4ade80; }
-    .d { color: #f87171; }
-    .a { color: #60a5fa; }
-    .sep { color: #1f2937; }
-    .divider { width: 1px; height: 24px; background: rgba(255,255,255,0.07); flex-shrink: 0; }
-    #champ-name { font-size: 10px; font-weight: 600; color: #f87171; }
-    #summoner-name { font-size: 8px; color: #4b5563; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ── Player card ── */
+#player-card{flex-shrink:0;padding:10px 12px;display:flex;gap:10px;align-items:flex-start}
+#champ-portrait{
+  width:46px;height:46px;border-radius:10px;flex-shrink:0;
+  object-fit:cover;background:rgba(255,255,255,.04);
+  border:1.5px solid rgba(200,155,60,.3);
+  box-shadow:0 0 16px rgba(200,155,60,.12);
+}
+#player-mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+#player-top-row{display:flex;align-items:baseline;gap:6px}
+#champ-name-live{font-size:14px;font-weight:800;color:#fff;letter-spacing:-.01em}
+#lv-badge{
+  font-size:7px;font-weight:700;letter-spacing:.15em;
+  padding:1px 5px;border-radius:4px;
+  background:rgba(200,155,60,.12);border:1px solid rgba(200,155,60,.25);
+  color:var(--gold);flex-shrink:0;
+}
+#summoner-live{font-size:7.5px;color:rgba(255,255,255,.3);letter-spacing:.04em}
 
-    /* ── AI Coach ── */
-    #ai-panel {
-      flex-shrink: 0;
-      margin: 8px 10px;
-      border: 1px solid rgba(239,68,68,0.18);
-      border-radius: 4px;
-      background: rgba(127,29,29,0.07);
-      overflow: hidden;
-    }
-    #ai-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 10px;
-      border-bottom: 1px solid rgba(239,68,68,0.1);
-    }
-    #ai-label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    #ai-dot {
-      width: 4px;
-      height: 4px;
-      border-radius: 50%;
-      background: #ef4444;
-      box-shadow: 0 0 5px #ef4444;
-    }
-    #ai-title {
-      font-size: 8px;
-      font-weight: 900;
-      letter-spacing: 0.4em;
-      color: #f87171;
-    }
-    #ai-sub {
-      font-size: 7px;
-      letter-spacing: 0.2em;
-      color: #374151;
-    }
-    #ai-advice {
-      padding: 10px;
-      font-size: 11px;
-      line-height: 1.6;
-      color: #d1d5db;
-      min-height: 56px;
-    }
-    #ai-advice.loading {
-      color: #4b5563;
-      font-style: italic;
-      font-size: 10px;
-    }
+/* HP/MP bars */
+.bar-wrap{display:flex;align-items:center;gap:5px}
+.bar-track{
+  flex:1;height:4px;border-radius:2px;
+  background:rgba(255,255,255,.06);overflow:hidden;
+}
+.bar-fill{height:100%;border-radius:2px;transform-origin:left center;will-change:transform}
+#hp-fill{background:linear-gradient(90deg,#16a34a,#4ade80);box-shadow:0 0 6px rgba(74,222,128,.3)}
+#mp-fill{background:linear-gradient(90deg,#1d4ed8,#60a5fa);box-shadow:0 0 6px rgba(96,165,250,.3)}
+.bar-val{font-size:7px;color:rgba(255,255,255,.3);min-width:72px;text-align:right;flex-shrink:0}
 
-    /* ── Teams ── */
-    #teams {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0 10px 10px;
-    }
-    #teams-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-    .team-label {
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 0.3em;
-      margin-bottom: 6px;
-      padding-left: 4px;
-    }
-    .team-label.blue { color: #60a5fa; }
-    .team-label.red  { color: #f87171; }
-    .player-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 8px;
-      margin-bottom: 2px;
-      border-radius: 3px;
-      font-size: 10px;
-      border: 1px solid transparent;
-      transition: background 0.15s;
-    }
-    .player-row.ally  { background: rgba(255,255,255,0.02); }
-    .player-row.enemy { background: rgba(239,68,68,0.04); }
-    .player-row.me    { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.18); }
-    .player-row.dead  { opacity: 0.4; }
-    .player-champ { font-weight: 600; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .player-pos   { font-size: 8px; color: #4b5563; margin-top: 1px; }
-    .player-kda   { font-family: monospace; font-size: 9px; text-align: right; flex-shrink: 0; margin-left: auto; }
+#player-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0}
+#gold-val{font-size:14px;font-weight:800;color:var(--gold)}
+#gold-lbl{font-size:6.5px;letter-spacing:.18em;color:var(--gold-dim);font-weight:700}
+#cs-stack{text-align:right}
+#cs-val{font-size:10px;font-weight:700;color:rgba(255,255,255,.7)}
+#cs-pm{font-size:7px;color:rgba(255,255,255,.25)}
 
-    /* ── Waiting state ── */
-    #waiting-screen {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      padding: 24px;
-    }
-    #waiting-icon {
-      width: 48px;
-      height: 48px;
-      border: 2px solid rgba(239,68,68,0.2);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      color: rgba(239,68,68,0.4);
-      animation: spin-idle 8s linear infinite;
-    }
-    #waiting-title {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.3em;
-      color: #4b5563;
-      text-align: center;
-    }
-    #waiting-sub {
-      font-size: 9px;
-      color: #374151;
-      text-align: center;
-      line-height: 1.6;
-    }
+/* ── KDA card ── */
+#kda-card{flex-shrink:0;padding:8px 16px;display:flex;align-items:center;justify-content:space-around}
+.kn{text-align:center}
+.kn-v{font-size:24px;font-weight:900;line-height:1;letter-spacing:-.02em}
+.kn-l{font-size:6.5px;letter-spacing:.22em;color:rgba(255,255,255,.2);margin-top:3px;font-weight:700}
+.sv-k{color:var(--green)}
+.sv-d{color:var(--red)}
+.sv-a{color:#60a5fa}
+.sv-kda{color:var(--gold)}
+.kn-sep{font-size:18px;font-weight:300;color:rgba(255,255,255,.1);align-self:flex-start;padding-top:3px}
+.vsep{width:1px;height:28px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.07),transparent);align-self:center}
 
-    /* ── Animations ── */
-    @keyframes pulse-dot {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.6); }
-      50%       { box-shadow: 0 0 0 5px rgba(239,68,68,0); }
-    }
-    @keyframes shimmer {
-      0%, 100% { opacity: 0.4; }
-      50%       { opacity: 1; }
-    }
-    @keyframes spin-idle {
-      0%   { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .ai-shimmer { animation: shimmer 1.4s ease-in-out infinite; }
-  </style>
+/* ── Pill row ── */
+#pill-row{flex-shrink:0;display:flex;gap:5px}
+.pill{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:6px 8px;gap:1px;
+  background:var(--glass);
+  backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+  border:1px solid rgba(255,255,255,.07);border-radius:8px;
+}
+.pill-v{font-size:12px;font-weight:800;line-height:1}
+.pill-l{font-size:6.5px;letter-spacing:.18em;color:rgba(255,255,255,.25);font-weight:700}
+.pill.ward .pill-v{color:#a78bfa}
+.pill.goldlead .pill-v{color:var(--gold)}
+.pill.goldlead.deficit .pill-v{color:var(--red)}
+.pill.cs-pill .pill-v{color:rgba(255,255,255,.75)}
+.pill.cs-pill .cs-sub{font-size:7px;color:rgba(255,255,255,.3)}
+
+/* ── Mini stats ── */
+#mini-stats{
+  flex-shrink:0;
+  display:flex;align-items:center;justify-content:space-around;
+  padding:6px 10px;
+  background:var(--glass);
+  backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+  border:1px solid rgba(255,255,255,.07);border-radius:10px;
+}
+.ms-item{display:flex;flex-direction:column;align-items:center;gap:1px}
+.ms-v{font-size:11px;font-weight:800;color:rgba(255,255,255,.8)}
+.ms-l{font-size:6px;letter-spacing:.18em;color:rgba(255,255,255,.2);font-weight:700}
+.ms-sep{width:1px;height:20px;background:rgba(255,255,255,.05)}
+.ms-item.crit .ms-v{color:#fbbf24}
+.ms-item.ms .ms-v{color:var(--teal)}
+
+/* ── AI card ── */
+#ai-card{flex-shrink:0;padding:9px 12px}
+#ai-hdr{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+#ai-gem{
+  width:18px;height:18px;border-radius:5px;
+  background:linear-gradient(135deg,#7928ca,#ff0080);
+  display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0;
+}
+#ai-title{font-size:7.5px;font-weight:700;letter-spacing:.25em;color:rgba(255,255,255,.4)}
+#ai-badge{
+  margin-left:auto;font-size:6.5px;font-weight:700;letter-spacing:.1em;
+  padding:1px 6px;border-radius:20px;
+  background:rgba(255,0,128,.08);border:1px solid rgba(255,0,128,.2);color:rgba(255,0,128,.7);
+}
+#ai-text{font-size:9.5px;line-height:1.65;color:rgba(255,255,255,.5);max-height:56px;overflow:hidden}
+#ai-text.loading{color:rgba(255,255,255,.2);font-style:italic;animation:shim 1.4s ease-in-out infinite}
+@keyframes shim{0%,100%{opacity:.4}50%{opacity:1}}
+
+/* ── Teams card ── */
+#teams-card{flex:1;overflow:hidden;padding:8px 10px;display:flex;flex-direction:column;gap:0}
+#teams-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 8px;flex:1;overflow-y:auto}
+.team-hdr{
+  display:flex;align-items:center;gap:4px;
+  font-size:7px;font-weight:700;letter-spacing:.2em;
+  padding-bottom:5px;margin-bottom:3px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.th-b{color:rgba(96,165,250,.8)}.th-r{color:rgba(239,68,68,.8)}
+.th-dot{width:4px;height:4px;border-radius:50%;flex-shrink:0}
+.th-b .th-dot{background:linear-gradient(135deg,#2152ff,#21d4fd)}
+.th-r .th-dot{background:linear-gradient(135deg,#ef4444,#ff6b6b)}
+.th-kda{margin-left:auto;font-size:6.5px;color:rgba(255,255,255,.18);font-family:monospace}
+
+.prow{
+  display:flex;align-items:center;gap:4px;
+  padding:3px 4px;margin-bottom:2px;
+  border-radius:7px;border:1px solid transparent;
+  transition:background .15s;
+}
+.prow.ally{background:rgba(96,165,250,.04)}
+.prow.enemy{background:rgba(239,68,68,.04)}
+.prow.me{background:rgba(200,155,60,.07);border-color:rgba(200,155,60,.2)}
+.prow.dead{opacity:.22;filter:grayscale(.5)}
+.prow-icon{
+  width:20px;height:20px;border-radius:5px;flex-shrink:0;
+  object-fit:cover;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.07);
+}
+.prow-left{flex:1;min-width:0}
+.prow-cname{font-size:8.5px;font-weight:700;color:rgba(255,255,255,.85);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow-sub{font-size:6.5px;color:rgba(255,255,255,.22);display:flex;gap:4px}
+.prow-dead{font-size:6.5px;color:var(--red)}
+.prow-kda{
+  font-family:monospace;font-size:7.5px;
+  text-align:right;flex-shrink:0;
+  color:rgba(255,255,255,.3);
+  display:flex;flex-direction:column;gap:1px;
+  align-items:flex-end;
+}
+.prow-kda .kk{color:var(--green)}.prow-kda .dd{color:var(--red)}.prow-kda .aa{color:#60a5fa}
+.prow-kda .cs-s{font-size:6.5px;color:rgba(255,255,255,.2)}
+</style>
 </head>
 <body>
 <div id="root">
 
-  <!-- HEADER -->
-  <div id="header">
-    <div id="brand">
-      <div id="brand-dot"></div>
-      <span id="brand-name">ATAK</span>
-      <span id="brand-sub">COMPANION</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:6px;">
-      <div id="status-badge">
-        <div id="live-dot"></div>
-        <span id="status-text">STANDBY</span>
+<!-- HEADER -->
+<div id="hdr">
+  <div id="brand">
+    <div id="brand-gem">A</div>
+    <span id="brand-nm">ATAK</span>
+    <span id="live-pill"><div id="live-dot"></div>LIVE</span>
+  </div>
+  <div id="hdr-right">
+    <span id="game-time">—:——</span>
+    <button id="close-btn" onclick="closeMe()">✕</button>
+  </div>
+</div>
+
+<!-- WAITING -->
+<div id="waiting">
+  <div id="wait-orb">◈</div>
+  <div id="wait-t">WAITING FOR MATCH</div>
+  <div id="wait-s">ATAK activates automatically when a League game is detected.</div>
+</div>
+
+<!-- LIVE -->
+<div id="live">
+
+  <!-- Player card -->
+  <div class="g gold-top" id="player-card">
+    <img id="champ-portrait" src="" alt="" onerror="this.style.opacity='.1'" />
+    <div id="player-mid">
+      <div id="player-top-row">
+        <span id="champ-name-live">—</span>
+        <span id="lv-badge">LV —</span>
       </div>
-      <button id="close-btn" class="no-drag" onclick="closeOverlay()" title="Close">×</button>
+      <div id="summoner-live">—</div>
+      <div class="bar-wrap">
+        <div class="bar-track"><div class="bar-fill" id="hp-fill" style="transform:scaleX(1)"></div></div>
+        <span class="bar-val" id="hp-txt">— HP</span>
+      </div>
+      <div class="bar-wrap">
+        <div class="bar-track"><div class="bar-fill" id="mp-fill" style="transform:scaleX(1)"></div></div>
+        <span class="bar-val" id="mp-txt">— MP</span>
+      </div>
+    </div>
+    <div id="player-right">
+      <div id="gold-val">—</div>
+      <div id="gold-lbl">GOLD</div>
+      <div id="cs-stack">
+        <div id="cs-val">— CS</div>
+        <div id="cs-pm">— /min</div>
+      </div>
     </div>
   </div>
 
-  <!-- WAITING SCREEN (shown when not in game) -->
-  <div id="waiting-screen">
-    <div id="waiting-icon">◈</div>
-    <div id="waiting-title">WATCHING FOR YOUR MATCH</div>
-    <div id="waiting-sub">
-      ATAK AI will automatically appear<br>when a League game is detected.
+  <!-- KDA -->
+  <div class="g" id="kda-card">
+    <div class="kn">
+      <div class="kn-v sv-k" id="st-k">0</div>
+      <div class="kn-l">KILLS</div>
+    </div>
+    <span class="kn-sep">/</span>
+    <div class="kn">
+      <div class="kn-v sv-d" id="st-d">0</div>
+      <div class="kn-l">DEATHS</div>
+    </div>
+    <span class="kn-sep">/</span>
+    <div class="kn">
+      <div class="kn-v sv-a" id="st-a">0</div>
+      <div class="kn-l">ASSISTS</div>
+    </div>
+    <div class="vsep"></div>
+    <div class="kn">
+      <div class="kn-v sv-kda" id="st-kda">—</div>
+      <div class="kn-l">KDA</div>
     </div>
   </div>
 
-  <!-- LIVE HUD (hidden until in game) -->
-  <div id="live-hud" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+  <!-- Pill row: CS / Ward / Gold diff -->
+  <div id="pill-row">
+    <div class="pill cs-pill">
+      <span class="pill-v" id="cs-pill-v">0 CS</span>
+      <span class="pill-l cs-sub" id="cs-pill-pm">— /min</span>
+    </div>
+    <div class="pill ward">
+      <span class="pill-v" id="ward-val">0</span>
+      <span class="pill-l">VISION</span>
+    </div>
+    <div class="pill goldlead" id="gold-diff-pill">
+      <span class="pill-v" id="gold-diff-val">—</span>
+      <span class="pill-l" id="gold-diff-lbl">TEAM GOLD</span>
+    </div>
+  </div>
 
-    <!-- Game time bar -->
-    <div id="game-bar">
+  <!-- Mini stats: AD AP AR MR MS CRIT -->
+  <div id="mini-stats">
+    <div class="ms-item"><span class="ms-v" id="ms-ad">—</span><span class="ms-l">AD</span></div>
+    <div class="ms-sep"></div>
+    <div class="ms-item"><span class="ms-v" id="ms-ap">—</span><span class="ms-l">AP</span></div>
+    <div class="ms-sep"></div>
+    <div class="ms-item"><span class="ms-v" id="ms-ar">—</span><span class="ms-l">AR</span></div>
+    <div class="ms-sep"></div>
+    <div class="ms-item"><span class="ms-v" id="ms-mr">—</span><span class="ms-l">MR</span></div>
+    <div class="ms-sep"></div>
+    <div class="ms-item ms"><span class="ms-v" id="ms-ms">—</span><span class="ms-l">MS</span></div>
+    <div class="ms-sep"></div>
+    <div class="ms-item crit"><span class="ms-v" id="ms-cr">—</span><span class="ms-l">CRIT</span></div>
+  </div>
+
+  <!-- AI -->
+  <div class="g red-top" id="ai-card">
+    <div id="ai-hdr">
+      <div id="ai-gem">✦</div>
+      <span id="ai-title">ATAK AI COACH</span>
+      <span id="ai-badge">AI</span>
+    </div>
+    <div id="ai-text" class="loading">Analyzing game state...</div>
+  </div>
+
+  <!-- Teams -->
+  <div class="g" id="teams-card">
+    <div id="teams-grid">
       <div>
-        <div id="game-timer">0:00</div>
-        <div id="game-mode">CLASSIC</div>
+        <div class="team-hdr th-b">
+          <div class="th-dot"></div>
+          <span id="ally-lbl">ORDER</span>
+          <span class="th-kda">K/D/A</span>
+        </div>
+        <div id="ally-list"></div>
       </div>
-      <div id="gold-display">
-        <div id="gold-value">0<span style="font-size:9px;color:#6b7280;margin-left:2px;">g</span></div>
-        <div id="gold-label">GOLD</div>
+      <div>
+        <div class="team-hdr th-r">
+          <div class="th-dot"></div>
+          <span id="enemy-lbl">CHAOS</span>
+          <span class="th-kda">K/D/A</span>
+        </div>
+        <div id="enemy-list"></div>
       </div>
     </div>
+  </div>
 
-    <!-- Stat strip -->
-    <div id="stat-strip">
-      <div class="stat-box">
-        <div class="kda-row">
-          <span class="k" id="stat-kills">0</span>
-          <span class="sep">/</span>
-          <span class="d" id="stat-deaths">0</span>
-          <span class="sep">/</span>
-          <span class="a" id="stat-assists">0</span>
-        </div>
-        <div class="stat-label">K / D / A</div>
-      </div>
-      <div class="divider"></div>
-      <div class="stat-box">
-        <div class="stat-value" id="stat-kda">—</div>
-        <div class="stat-label">KDA</div>
-      </div>
-      <div class="divider"></div>
-      <div class="stat-box">
-        <div class="stat-value" id="stat-cs">0</div>
-        <div class="stat-label" id="stat-cspm">— CS/m</div>
-      </div>
-      <div class="divider"></div>
-      <div class="stat-box">
-        <div class="stat-value" id="stat-level">LV1</div>
-        <div class="stat-label">LEVEL</div>
-      </div>
-      <div class="divider"></div>
-      <div style="text-align:right;min-width:0;">
-        <div id="champ-name">—</div>
-        <div id="summoner-name">—</div>
-      </div>
-    </div>
-
-    <!-- AI Coach -->
-    <div id="ai-panel">
-      <div id="ai-header">
-        <div id="ai-label">
-          <div id="ai-dot"></div>
-          <span id="ai-title">ATAK AI</span>
-          <span id="ai-sub">COACH</span>
-        </div>
-      </div>
-      <div id="ai-advice">Waiting for match data...</div>
-    </div>
-
-    <!-- Teams -->
-    <div id="teams">
-      <div id="teams-grid">
-        <div>
-          <div class="team-label blue" id="ally-label">◈ ORDER</div>
-          <div id="ally-list"></div>
-        </div>
-        <div>
-          <div class="team-label red" id="enemy-label">◈ CHAOS</div>
-          <div id="enemy-list"></div>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /live-hud -->
-
+</div><!-- /live -->
 </div><!-- /root -->
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="in_game.js"></script>
 </body>
 </html>

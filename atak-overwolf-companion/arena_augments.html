@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ATAK — Arena Augments</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:540px;height:134px;overflow:hidden;user-select:none}
+:root{
+  --gold:#c89b3c;--gold-lt:#f0e6d3;--teal:#0bc4e3;--red:#ef4444;
+  --green:#22c55e;--purple:#a855f7;--silver:#94a3b8;
+}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;color:#fff;
+  background:rgba(1,10,19,.82);
+  backdrop-filter:blur(28px) saturate(140%);
+  -webkit-backdrop-filter:blur(28px) saturate(140%);
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:12px;
+  opacity:.92;
+  transition:opacity .2s;
+}
+body:hover{opacity:1}
+
+/* ── Top bar ── */
+#topbar{
+  display:flex;align-items:center;gap:7px;
+  padding:7px 10px 5px;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  -webkit-app-region:drag;
+}
+#gem{
+  width:16px;height:16px;flex-shrink:0;
+  clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);
+  background:linear-gradient(135deg,#c89b3c,#785a28);
+  display:flex;align-items:center;justify-content:center;
+  font-size:7px;font-weight:900;color:#010a13;
+}
+#title{font-size:9px;font-weight:800;letter-spacing:.25em;color:rgba(255,255,255,.5)}
+#champ-nm{font-size:11px;font-weight:900;letter-spacing:-.01em;color:#fff}
+#round-pill{
+  margin-left:auto;
+  font-size:7px;font-weight:700;letter-spacing:.12em;
+  padding:2px 7px;border-radius:20px;
+  background:rgba(200,155,60,.1);border:1px solid rgba(200,155,60,.25);color:var(--gold);
+  -webkit-app-region:no-drag;
+}
+#aug-count{
+  font-size:7px;font-weight:700;letter-spacing:.1em;
+  padding:2px 6px;border-radius:20px;
+  background:rgba(11,196,227,.08);border:1px solid rgba(11,196,227,.2);color:var(--teal);
+  -webkit-app-region:no-drag;
+}
+#close-btn{
+  width:18px;height:18px;background:transparent;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:rgba(255,255,255,.2);border-radius:5px;
+  -webkit-app-region:no-drag;transition:.15s;
+}
+#close-btn:hover{background:rgba(239,68,68,.15);color:var(--red)}
+
+/* ── Tiers row ── */
+#tiers{
+  display:flex;align-items:stretch;gap:0;
+  padding:6px 10px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+.tier-block{display:flex;align-items:center;gap:5px;flex:1;min-width:0}
+.tier-block+.tier-block{padding-left:10px;border-left:1px solid rgba(255,255,255,.07);margin-left:10px}
+.tier-badge{
+  flex-shrink:0;width:18px;height:18px;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:900;
+}
+.tier-badge.S{background:rgba(234,179,8,.18);border:1px solid rgba(234,179,8,.4);color:#fbbf24}
+.tier-badge.A{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:var(--green)}
+.tier-badge.B{background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.25);color:#60a5fa}
+.tier-badge.X{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--red);font-size:10px}
+.tier-cats{font-size:8.5px;font-weight:600;color:rgba(255,255,255,.65);line-height:1.25;min-width:0;overflow:hidden}
+.tier-cats span{opacity:.4} /* separator */
+
+/* ── AI tip ── */
+#ai-tip{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 10px;
+}
+#ai-icon{font-size:8px;flex-shrink:0;color:rgba(255,0,128,.6)}
+#ai-txt{
+  font-size:8px;line-height:1.4;color:rgba(255,255,255,.38);
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+}
+#ai-txt.loading{color:rgba(255,255,255,.18);font-style:italic;animation:shim 1.4s ease-in-out infinite}
+@keyframes shim{0%,100%{opacity:.3}50%{opacity:.8}}
+
+/* Slide-in entrance */
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+body{animation:slideDown .25s ease-out}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="gem">A</div>
+  <span id="title">AUGMENT GUIDE</span>
+  <span id="champ-nm">—</span>
+  <span id="round-pill">ROUND —</span>
+  <span id="aug-count">— / 3</span>
+  <button id="close-btn" onclick="closeMe()">✕</button>
+</div>
+
+<div id="tiers">
+  <div class="tier-block">
+    <div class="tier-badge S">S</div>
+    <div class="tier-cats" id="s-cats">—</div>
+  </div>
+  <div class="tier-block">
+    <div class="tier-badge A">A</div>
+    <div class="tier-cats" id="a-cats">—</div>
+  </div>
+  <div class="tier-block">
+    <div class="tier-badge X">✕</div>
+    <div class="tier-cats" id="skip-cats">—</div>
+  </div>
+</div>
+
+<div id="ai-tip">
+  <span id="ai-icon">✦</span>
+  <span id="ai-txt" class="loading">Analyzing champion build...</span>
+</div>
+
+<script>
+// ── Champion → augment priorities ──────────────────────────────────────────
+const ARCHETYPES = {
+  // CRIT ADC
+  Jinx:'CRIT_ADC',Caitlyn:'CRIT_ADC','Miss Fortune':'CRIT_ADC',Ashe:'CRIT_ADC',
+  Tristana:'CRIT_ADC',Sivir:'CRIT_ADC',Xayah:'CRIT_ADC',Ezreal:'CRIT_ADC',
+  'Kai\'Sa':'CRIT_ADC',Vayne:'CRIT_ADC',Twitch:'CRIT_ADC',Aphelios:'CRIT_ADC',
+  // Jhin: crit but SKIP AS
+  Jhin:'JHIN',
+  // Lethality ADC
+  Draven:'LETH_ADC',Varus:'LETH_ADC',Kalista:'LETH_ADC',
+  // Burst AP
+  Lux:'BURST_AP',Ahri:'BURST_AP',Syndra:'BURST_AP',Veigar:'BURST_AP',
+  Orianna:'BURST_AP',Zoe:'BURST_AP',Annie:'BURST_AP',Vex:'BURST_AP',
+  Ekko:'AP_FIGHTER',Katarina:'AP_FIGHTER',Akali:'AP_FIGHTER',
+  // Poke AP
+  Xerath:'POKE_AP',Ziggs:'POKE_AP','Vel\'Koz':'POKE_AP',Karma:'POKE_AP',
+  Viktor:'POKE_AP',Cassiopeia:'POKE_AP',
+  // AP Fighter/Mage
+  Vladimir:'AP_FIGHTER',Mordekaiser:'AP_FIGHTER',Sylas:'AP_FIGHTER',
+  // Enchanter
+  Lulu:'ENCHANTER',Soraka:'ENCHANTER',Janna:'ENCHANTER',Nami:'ENCHANTER',
+  Yuumi:'ENCHANTER',Sona:'ENCHANTER',
+  // Support Tank
+  Thresh:'SUPPORT',Nautilus:'SUPPORT',Leona:'SUPPORT',Blitzcrank:'SUPPORT',
+  Morgana:'SUPPORT',
+  // Tank
+  Malphite:'TANK',Ornn:'TANK','Cho\'Gath':'TANK',Maokai:'TANK',Alistar:'TANK',
+  Amumu:'TANK',Sion:'TANK',
+  // Fighter/Bruiser
+  Darius:'FIGHTER',Garen:'FIGHTER',Sett:'FIGHTER',Urgot:'FIGHTER',
+  Renekton:'FIGHTER',Olaf:'FIGHTER',Tryndamere:'FIGHTER',
+  // Bruiser (scale with AS+AD)
+  Camille:'BRUISER',Fiora:'BRUISER',Jax:'BRUISER',Irelia:'BRUISER',
+  'Master Yi':'BRUISER',Trundle:'BRUISER',Warwick:'BRUISER',
+  // Physical Assassin
+  Zed:'ASSASSIN',Talon:'ASSASSIN','Kha\'Zix':'ASSASSIN',Pyke:'ASSASSIN',
+  Rengar:'ASSASSIN',Nocturne:'ASSASSIN',Qiyana:'ASSASSIN',
+}
+
+const PRIORITIES = {
+  CRIT_ADC:{
+    S:'Crit · Attack Speed · On-Hit',A:'AD · Haste · Healing',
+    skip:'AP · Tank · CC',
+    tip:'Rush crit augments first. Lightning Strikes and Binary Airdrop are S-tier. On-hit synergizes with AS builds.',
+  },
+  JHIN:{
+    S:'Crit · Lethality · Slow · AD',A:'Haste · Magic Pen',
+    skip:'ATTACK SPEED · AP',
+    tip:'Jhin has fixed AS — any attack speed augment is WASTED. Always pick Crit or Lethality over AS options.',
+  },
+  LETH_ADC:{
+    S:'Lethality · AD · Attack Speed',A:'Crit · Haste · Healing',
+    skip:'AP · Tank',
+    tip:'Lethality augments shred squishies. Stack AD and pen before crit to maximize burst.',
+  },
+  BURST_AP:{
+    S:'AP · Magic Pen · Haste',A:'Shielding · Healing · HP',
+    skip:'Crit · Attack Speed · Tank',
+    tip:'AP scaling is exponential. Jeweled Lotus and Spellwake are S-tier. Never take crit or AS augments.',
+  },
+  POKE_AP:{
+    S:'AP · Magic Pen · Haste',A:'HP · Shielding · Healing',
+    skip:'Crit · Attack Speed · Tank',
+    tip:'Prioritize haste and AP to maximize poke uptime. Range augments are exceptionally strong here.',
+  },
+  AP_FIGHTER:{
+    S:'AP · Haste · Omnivamp',A:'HP · Healing · Magic Pen',
+    skip:'Crit · Lethality · Tank',
+    tip:'Omnivamp augments sustain your dive pattern. Take Haste over raw AP when ahead.',
+  },
+  ENCHANTER:{
+    S:'Haste · Shielding · HP',A:'AP · Healing · Utility',
+    skip:'Crit · Lethality · Attack Speed',
+    tip:'Focus on enabling your duo partner. CDR and shield augments extend your peel window significantly.',
+  },
+  SUPPORT:{
+    S:'Haste · HP · Tank',A:'Shielding · Healing · AD',
+    skip:'Crit · AP · Lethality',
+    tip:'Tank and haste augments let you engage more frequently. Shielding can replace raw HP if your duo is squishy.',
+  },
+  TANK:{
+    S:'HP · Tank · Haste',A:'Healing · Omnivamp · AD',
+    skip:'Crit · AP · Lethality',
+    tip:'Max-HP scaling augments are multiplicative. One good HP augment is worth more than two mediocre armor picks.',
+  },
+  FIGHTER:{
+    S:'AD · HP · Haste',A:'Omnivamp · Tank · Attack Speed',
+    skip:'AP · Magic Pen · Lethality',
+    tip:'AD + HP augments let you both deal and sustain damage. Avoid lethality — you need to stay in fights.',
+  },
+  BRUISER:{
+    S:'Attack Speed · AD · HP',A:'Crit · Haste · Omnivamp',
+    skip:'AP · Magic Pen',
+    tip:'AS synergizes with on-hit effects on bruisers. Crit becomes strong after your first crit item.',
+  },
+  ASSASSIN:{
+    S:'Lethality · AD · Haste',A:'Crit · Omnivamp · Movement',
+    skip:'Tank · AP',
+    tip:'Lethality augments burst carries in one rotation. Haste reduces cooldowns for more frequent all-ins.',
+  },
+  DEFAULT:{
+    S:'Haste · AD/AP · HP',A:'Healing · Shielding · Utility',
+    skip:'Off-stat augments',
+    tip:'Prioritize augments that match your primary damage type. Haste is universally strong across all champions.',
+  },
+}
+
+// ── State ───────────────────────────────────────────────────────────────────
+let currentChamp = null
+let currentRound = 0
+let augCount = 0
+
+function getArchetype(champ) {
+  return ARCHETYPES[champ] || 'DEFAULT'
+}
+
+function render(champ, round, count, tip) {
+  if (champ) {
+    currentChamp = champ
+    document.getElementById('champ-nm').textContent = champ
+    const arch = PRIORITIES[getArchetype(champ)] || PRIORITIES.DEFAULT
+    document.getElementById('s-cats').textContent  = arch.S
+    document.getElementById('a-cats').textContent  = arch.A
+    document.getElementById('skip-cats').textContent = arch.skip
+    if (tip === undefined && !document.getElementById('ai-txt').classList.contains('loading')) {
+      document.getElementById('ai-txt').textContent = arch.tip
+      document.getElementById('ai-txt').className = ''
+    }
+  }
+  if (round !== undefined) {
+    currentRound = round
+    document.getElementById('round-pill').textContent = round > 0 ? 'ROUND ' + round : 'PRE-GAME'
+  }
+  if (count !== undefined) {
+    augCount = count
+    document.getElementById('aug-count').textContent = count + ' / 3'
+  }
+  if (tip) {
+    const el = document.getElementById('ai-txt')
+    el.className = ''
+    el.textContent = tip
+  }
+}
+
+function closeMe() {
+  if (typeof overwolf !== 'undefined')
+    overwolf.windows.getCurrentWindow(r => { if (r.status === 'success') overwolf.windows.close(r.window.id) })
+}
+
+// ── Messages ────────────────────────────────────────────────────────────────
+if (typeof overwolf !== 'undefined' && overwolf.windows) {
+  overwolf.windows.onMessageReceived.addListener(msg => {
+    const c = msg?.content
+    if (!c) return
+    if (c.type === 'aug-init') {
+      render(c.champName, c.round, c.augCount)
+      document.getElementById('ai-txt').className = 'loading'
+      document.getElementById('ai-txt').textContent = 'Analyzing augments...'
+    }
+    if (c.type === 'aug-update') {
+      render(c.champName, c.round, c.augCount)
+    }
+    if (c.type === 'aug-ai-tip') {
+      document.getElementById('ai-txt').className = ''
+      document.getElementById('ai-txt').textContent = c.tip
+    }
+  })
+}
+
+// Dev preview
+if (typeof overwolf === 'undefined') {
+  render('Jhin', 2, 1, 'Jhin has fixed AS — any attack speed augment is WASTED. Always pick Crit or Lethality over AS options.')
+}
+</script>
+</body>
+</html>

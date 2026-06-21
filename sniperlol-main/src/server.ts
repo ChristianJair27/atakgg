@@ -21,6 +21,8 @@ import aiRoutes from './routes/ai.routes.js';
 
 import tournamentsRouter from './routes/tournaments.routes.js';
 import socialRouter from './routes/social.routes.js';
+import champSelectRouter from './routes/champ-select.routes.js';
+import lcuProxyRouter from './routes/lcu-proxy.routes.js';
 
 // ===== CORS =====
 const allowedOrigins = (process.env.CORS_ORIGIN || "")
@@ -38,7 +40,7 @@ const corsOptions: cors.CorsOptions = {
       return cb(null, true);
     }
     // Permite Electron o webview protocols
-    if (origin.startsWith("app://") || origin.startsWith("file://") || origin.startsWith("vscode-webview://")) {
+    if (origin.startsWith("app://") || origin.startsWith("file://") || origin.startsWith("vscode-webview://") || origin.startsWith("overwolf-extension://") || origin.startsWith("https://www.overwolf.com/")) {
       return cb(null, true);
     }
     console.warn(`[CORS Blocked] Origin: ${origin}`);
@@ -91,6 +93,8 @@ app.use('/api', aiRoutes);
 
 app.use('/api/tournaments', tournamentsRouter);
 app.use('/api/social', socialRouter);
+app.use('/api/champ-select', champSelectRouter);
+app.use('/api/lcu-proxy', lcuProxyRouter);
 
 
 

@@ -1,0 +1,68 @@
+{
+  "name": "atak-electron-companion",
+  "version": "1.0.0",
+  "description": "ATAK.GG in-game companion overlay for League of Legends",
+  "main": "dist/browser/index.js",
+  "author": {
+    "name": "ATAK.GG",
+    "email": "kister@revolution505.com"
+  },
+  "license": "MIT",
+  "overwolf": {
+    "packages": [
+      "overlay"
+    ]
+  },
+  "build": {
+    "nodeGypRebuild": false,
+    "appId": "com.atakgg.companion",
+    "asar": true,
+    "productName": "ATAKCompanion",
+    "directories": {
+      "output": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "*.js",
+      "*.html",
+      "*.exe"
+    ],
+    "copyright": "Copyright 2026 ATAK.GG",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "publisherName": "ATAK.GG"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "scripts": {
+    "build:renderer": "webpack --config ./webpack.renderer.config.js",
+    "build:main": "webpack --config ./webpack.main.config.js",
+    "build": "yarn webpack --mode=development && yarn build:main && yarn build:renderer",
+    "build:dev": "yarn webpack --watch --mode=development",
+    "start": "ow-electron .",
+    "build:start": "yarn run build && ow-electron ."
+  },
+  "devDependencies": {
+    "@overwolf/ow-electron": "latest",
+    "@overwolf/ow-electron-builder": "latest",
+    "@overwolf/ow-electron-packages-types": "^1.1.2",
+    "@types/node": "^18.11.18",
+    "electron": "^21.1.0",
+    "html-webpack-plugin": "^5.5.0",
+    "ts-loader": "^9.4.2",
+    "typescript": "^4.7.4",
+    "webpack": "^5.75.0",
+    "webpack-cli": "^5.0.1"
+  }
+}

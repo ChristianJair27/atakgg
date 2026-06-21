@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import {
   createProvider, createTournament, generateCodes,
-  getLobbyEvents, getCodeInfo,
+  getLobbyEvents, getCodeInfo, getGamesByCode,
 } from '../services/riot-tournament.service.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
 import { getMatchById, getMatchIdsByPUUID, getAccountByRiotId, getSummonerByPUUID, getLiveGame, getLiveGameByPuuid } from '../services/riot.js';
@@ -81,6 +81,21 @@ async function initTables() {
       registered_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY unique_team (tournament_id, team_name(100)),
       INDEX idx_tournament (tournament_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tournament_match_stats (
+      id                INT AUTO_INCREMENT PRIMARY KEY,
+      tournament_id     VARCHAR(200) NOT NULL,
+      bracket_match_id  VARCHAR(50)  NOT NULL,
+      riot_match_id     VARCHAR(100) NOT NULL,
+      game_id           BIGINT       NOT NULL,
+      parsed_data       JSON         NOT NULL,
+      game_duration     INT,
+      game_end_ts       BIGINT,
+      fetched_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_bracket_match (tournament_id, bracket_match_id),
+      INDEX idx_riot_match (riot_match_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   // New columns (idempotent)
@@ -200,6 +215,127 @@ function isOwner(req: any, t: TournamentData) {
   return req.auth?.userId === t.createdBy || req.auth?.role === 'admin';
 }
 
+// ─── Match stats DB helpers ───────────────────────────────────────────────────
+
+async function getStoredMatchStats(tournamentId: string, bracketMatchId: string) {
+  const [[row]] = await pool.query<any[]>(
+    'SELECT parsed_data, game_end_ts FROM tournament_match_stats WHERE tournament_id=? AND bracket_match_id=?',
+    [tournamentId, bracketMatchId]
+  );
+  if (!row) return null;
+  const parsed = typeof row.parsed_data === 'string' ? JSON.parse(row.parsed_data) : row.parsed_data;
+  return { ...parsed, isComplete: !!row.game_end_ts };
+}
+
+async function saveMatchStats(
+  tournamentId: string, bracketMatchId: string, riotMatchId: string,
+  gameId: number, parsedData: object, gameDuration: number, gameEndTs?: number
+) {
+  await pool.query(
+    `INSERT INTO tournament_match_stats
+       (tournament_id, bracket_match_id, riot_match_id, game_id, parsed_data, game_duration, game_end_ts)
+     VALUES (?,?,?,?,?,?,?)
+     ON DUPLICATE KEY UPDATE
+       parsed_data=VALUES(parsed_data), game_duration=VALUES(game_duration), game_end_ts=VALUES(game_end_ts)`,
+    [tournamentId, bracketMatchId, riotMatchId, gameId, JSON.stringify(parsedData), gameDuration, gameEndTs ?? null]
+  );
+}
+
+function parseParticipant(p: any, gameDuration: number) {
+  const cs = (p.totalMinionsKilled ?? 0) + (p.neutralMinionsKilled ?? 0);
+  const mins = Math.max(1, gameDuration / 60);
+  return {
+    summonerName:      p.riotIdGameName  || p.summonerName  || 'Invocador',
+    tagLine:           p.riotIdTagline   || p.riotIdTagLine || '',
+    championName:      p.championName,
+    champLevel:        p.champLevel,
+    teamId:            p.teamId,
+    win:               p.win,
+    kills:             p.kills           ?? 0,
+    deaths:            p.deaths          ?? 0,
+    assists:           p.assists         ?? 0,
+    kda:               p.deaths === 0 ? (p.kills + p.assists) : ((p.kills + p.assists) / p.deaths),
+    cs,
+    csPerMin:          Math.round((cs / mins) * 10) / 10,
+    goldEarned:        p.goldEarned      ?? 0,
+    totalDamageDealt:  p.totalDamageDealtToChampions ?? 0,
+    physicalDamage:    p.physicalDamageDealtToChampions ?? 0,
+    magicDamage:       p.magicDamageDealtToChampions  ?? 0,
+    trueDamage:        p.trueDamageDealtToChampions   ?? 0,
+    damageTaken:       p.totalDamageTaken  ?? 0,
+    healingDone:       p.totalHeal         ?? 0,
+    visionScore:       p.visionScore       ?? 0,
+    wardsPlaced:       p.wardsPlaced       ?? 0,
+    wardsKilled:       p.wardsKilled       ?? 0,
+    items:             [p.item0,p.item1,p.item2,p.item3,p.item4,p.item5,p.item6].map(Number),
+    summoner1Id:       p.summoner1Id       ?? 0,
+    summoner2Id:       p.summoner2Id       ?? 0,
+    perks: {
+      keystoneId:        p.perks?.styles?.[0]?.selections?.[0]?.perk ?? 0,
+      secondaryStyleId:  p.perks?.styles?.[1]?.style ?? 0,
+    },
+    pentaKills:        p.pentaKills   ?? 0,
+    quadraKills:       p.quadraKills  ?? 0,
+    tripleKills:       p.tripleKills  ?? 0,
+    doubleKills:       p.doubleKills  ?? 0,
+    firstBloodKill:    p.firstBloodKill ?? false,
+    teamPosition:      p.teamPosition   || p.role || '',
+    largestMultiKill:  p.largestMultiKill ?? 0,
+    killingSprees:     p.killingSprees   ?? 0,
+    totalTimeCCDealt:  p.totalTimeCCDealt ?? 0,
+    challenges: p.challenges ? {
+      killParticipation: p.challenges.killParticipation,
+      kda:               p.challenges.kda,
+      damagePerMinute:   p.challenges.damagePerMinute,
+      goldPerMinute:     p.challenges.goldPerMinute,
+      visionScorePerMinute: p.challenges.visionScorePerMinute,
+      soloKills:         p.challenges.soloKills,
+      pentaKills:        p.challenges.multikills,
+    } : undefined,
+  };
+}
+
+function parseTeamObjectives(team: any) {
+  const obj = team?.objectives ?? {};
+  return {
+    win:              team?.win       ?? false,
+    bans:             team?.bans      ?? [],
+    baronKills:       obj.baron?.kills     ?? 0,
+    dragonKills:      obj.dragon?.kills    ?? 0,
+    towerKills:       obj.tower?.kills     ?? 0,
+    inhibitorKills:   obj.inhibitor?.kills ?? 0,
+    riftHeraldKills:  obj.riftHerald?.kills ?? 0,
+    firstBaron:       obj.baron?.first     ?? false,
+    firstDragon:      obj.dragon?.first    ?? false,
+    firstTower:       obj.tower?.first     ?? false,
+  };
+}
+
+function buildMatchStatsResponse(data: any, riotMatchIdStr: string, isComplete: boolean) {
+  const info = data.info;
+  const dur  = info.gameDuration as number;
+  const participants: any[] = info.participants.map((p: any) => parseParticipant(p, dur));
+  const blueTeam = participants.filter((p: any) => p.teamId === 100);
+  const redTeam  = participants.filter((p: any) => p.teamId === 200);
+  const blueTeamRaw = (info.teams as any[]).find((t: any) => t.teamId === 100);
+  const redTeamRaw  = (info.teams as any[]).find((t: any) => t.teamId === 200);
+  const winnerTeamId = (info.teams as any[]).find((t: any) => t.win)?.teamId;
+
+  return {
+    matchId:            riotMatchIdStr,
+    gameDuration:       dur,
+    gameStartTimestamp: info.gameStartTimestamp,
+    gameEndTimestamp:   info.gameEndTimestamp,
+    gameMode:           info.gameMode,
+    isComplete,
+    winner:             winnerTeamId === 100 ? 'blue' : winnerTeamId === 200 ? 'red' : null,
+    blueTeam,
+    redTeam,
+    blueObjectives: parseTeamObjectives(blueTeamRaw),
+    redObjectives:  parseTeamObjectives(redTeamRaw),
+  };
+}
+
 // ─── Bracket generator ────────────────────────────────────────────────────────
 function generateBracket(teams: string[]): BracketMatch[] {
   const n = Math.pow(2, Math.ceil(Math.log2(Math.max(teams.length, 2))));
@@ -242,6 +378,23 @@ function riotRegionToPlatform(region: string): string {
   return m[region.toUpperCase()] || 'la1';
 }
 function riotMatchId(gameId: number, platform: string) { return `${platform.toUpperCase()}_${gameId}`; }
+
+// Llama a la API de Riot para obtener el gameId de una partida a partir del código de torneo.
+// Devuelve null si aún no hay partida registrada para ese código.
+async function tryDetectGameId(
+  code: string, fallbackRegion: string
+): Promise<{ gameId: number; platform: string } | null> {
+  try {
+    const games = await getGamesByCode(code);
+    if (!games.length) return null;
+    // Toma el juego más reciente (último del array)
+    const latest = games[games.length - 1];
+    const platform = riotRegionToPlatform(latest.region || fallbackRegion);
+    return { gameId: Number(latest.gameId), platform };
+  } catch {
+    return null;
+  }
+}
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
@@ -654,17 +807,34 @@ router.get('/debug-lobby/:code', async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// Match stats
+// Match stats — full MatchDto parsing with DB cache
 router.get('/:id/matches/:matchId/stats', async (req, res) => {
   const { id, matchId } = req.params;
   try {
     const t = await getT(id);
-    if (!t) return res.status(404).json({ error:'Torneo no encontrado' });
-    const match = t.bracket?.find(m=>m.id===matchId);
-    if (!match) return res.status(404).json({ error:'Partido no encontrado' });
-    if (!match.gameId) return res.status(404).json({ error:'No hay gameId para este partido. Linkea el gameId primero.' });
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!t.bracket) return res.status(404).json({ error: 'Partido no encontrado' });
+    const mi = t.bracket.findIndex(m => m.id === matchId);
+    if (mi === -1) return res.status(404).json({ error: 'Partido no encontrado' });
 
-    // Try stored platform first, then LATAM sibling if it returns null
+    // Auto-detectar gameId desde el código de torneo si aún no está vinculado
+    if (!t.bracket[mi].gameId && t.bracket[mi].code) {
+      const detected = await tryDetectGameId(t.bracket[mi].code!, t.region || 'la1');
+      if (detected) {
+        console.log(`[stats] gameId auto-detectado vía código: ${t.bracket[mi].code} → ${detected.gameId} (${detected.platform})`);
+        t.bracket[mi].gameId     = detected.gameId;
+        t.bracket[mi].gameRegion = detected.platform;
+        await saveT(t).catch(e => console.error('[stats] saveT error:', e.message));
+      }
+    }
+
+    const match = t.bracket[mi];
+    if (!match.gameId) return res.status(404).json({ error: 'No hay gameId. La partida aún no ha sido registrada en Riot o el código no fue usado.' });
+
+    // Serve from DB cache if complete (game already finished + saved)
+    const cached = await getStoredMatchStats(id, matchId);
+    if (cached?.isComplete) return res.json(cached);
+
     const primaryPlatform = match.gameRegion || t.region || 'la1';
     const tryPlatforms = primaryPlatform === 'la1' ? ['la1','la2']
                        : primaryPlatform === 'la2' ? ['la2','la1']
@@ -677,32 +847,207 @@ router.get('/:id/matches/:matchId/stats', async (req, res) => {
       if (data) { usedPlatform = pf; break; }
     }
 
-    if (!data) return res.status(404).json({ error:`Partida ${match.gameId} no encontrada en Riot (intenté: ${tryPlatforms.join(', ')})` });
-    const info = (data as any).info;
-    const participants = info.participants.map((p: any) => ({
-      summonerName:p.riotIdGameName||p.summonerName, tagLine:p.riotIdTagLine,
-      championName:p.championName, champLevel:p.champLevel,
-      teamId:p.teamId, win:p.win,
-      kills:p.kills, deaths:p.deaths, assists:p.assists,
-      kda:p.deaths===0?(p.kills+p.assists):((p.kills+p.assists)/p.deaths),
-      cs:p.totalMinionsKilled+p.neutralMinionsKilled,
-      csPerMin:Math.round(((p.totalMinionsKilled+p.neutralMinionsKilled)/info.gameDuration)*60*10)/10,
-      goldEarned:p.goldEarned, totalDamageDealt:p.totalDamageDealtToChampions,
-      visionScore:p.visionScore, wardsPlaced:p.wardsPlaced, wardsKilled:p.wardsKilled,
-      items:[p.item0,p.item1,p.item2,p.item3,p.item4,p.item5,p.item6].filter(Boolean),
-      pentaKills:p.pentaKills, quadraKills:p.quadraKills, tripleKills:p.tripleKills,
-      firstBloodKill:p.firstBloodKill,
-    }));
-    res.json({
-      matchId:riotMatchId(match.gameId, usedPlatform),
-      gameDuration:info.gameDuration, gameStartTimestamp:info.gameStartTimestamp,
-      gameMode:info.gameMode,
-      blueTeam:participants.filter((p:any)=>p.teamId===100),
-      redTeam:participants.filter((p:any)=>p.teamId===200),
-      winner:info.teams.find((t:any)=>t.win)?.teamId===100?'blue':'red',
-      teams:info.teams,
+    // Intenta plataformas adicionales (na1, br1) como último recurso
+    if (!data) {
+      const extra = ['na1', 'br1'].filter(p => !tryPlatforms.includes(p));
+      for (const pf of extra) {
+        data = await getMatchById(pf, riotMatchId(match.gameId!, pf));
+        if (data) { usedPlatform = pf; break; }
+      }
+    }
+
+    if (!data) return res.status(404).json({
+      error: `Partida ${match.gameId} no encontrada en Riot.`,
+      detail: 'Verifica que la partida fue jugada con el código de torneo activo en el lobby. Si fue jugada sin código, linkea el gameId correcto con /link-gameid.',
+      triedPlatforms: [...tryPlatforms, 'na1', 'br1'].filter((v, i, a) => a.indexOf(v) === i),
     });
+
+    const info = data.info;
+    const isComplete = !!info.gameEndTimestamp;
+    const riotMid = riotMatchId(match.gameId, usedPlatform);
+    const parsed = buildMatchStatsResponse(data, riotMid, isComplete);
+
+    // Persist to DB once the game is over
+    if (isComplete) {
+      await saveMatchStats(id, matchId, riotMid, match.gameId, parsed, info.gameDuration, info.gameEndTimestamp)
+        .catch(err => console.error('[stats] save error:', err.message));
+    }
+
+    res.json(parsed);
   } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// Detectar gameId desde el código de torneo del partido (llamada explícita)
+router.post('/:id/matches/:matchId/detect-from-code', async (req, res) => {
+  const { id, matchId } = req.params;
+  try {
+    const t = await getT(id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!t.bracket) return res.status(400).json({ error: 'Sin bracket' });
+    const mi = t.bracket.findIndex(m => m.id === matchId);
+    if (mi === -1) return res.status(404).json({ error: 'Partido no encontrado' });
+    const match = t.bracket[mi];
+    if (!match.code) return res.status(400).json({ error: 'El partido no tiene código de torneo asignado' });
+
+    const detected = await tryDetectGameId(match.code, t.region || 'la1');
+    if (!detected) {
+      return res.status(404).json({
+        error: 'La partida aún no está disponible en la API de Riot. Espera a que termine y vuelve a intentarlo.',
+        code: match.code,
+      });
+    }
+    t.bracket[mi].gameId     = detected.gameId;
+    t.bracket[mi].gameRegion = detected.platform;
+    await saveT(t);
+    res.json({ success: true, gameId: detected.gameId, platform: detected.platform, matchId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sincronizar gameIds en todos los partidos con código pero sin gameId
+router.post('/:id/sync-games', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const t = await getT(id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!t.bracket) return res.json({ synced: 0, details: [] });
+
+    const details: { matchId: string; code: string; gameId?: number; platform?: string; error?: string }[] = [];
+
+    for (let i = 0; i < t.bracket.length; i++) {
+      const m = t.bracket[i];
+      if (!m.code || m.gameId) continue;
+
+      try {
+        const detected = await tryDetectGameId(m.code, t.region || 'la1');
+        if (detected) {
+          t.bracket[i].gameId     = detected.gameId;
+          t.bracket[i].gameRegion = detected.platform;
+          details.push({ matchId: m.id, code: m.code, gameId: detected.gameId, platform: detected.platform });
+        } else {
+          details.push({ matchId: m.id, code: m.code, error: 'Sin partida registrada aún' });
+        }
+      } catch (e: any) {
+        details.push({ matchId: m.id, code: m.code, error: e.message });
+      }
+    }
+
+    const synced = details.filter(d => d.gameId).length;
+    if (synced > 0) await saveT(t);
+
+    res.json({ synced, total: details.length, details });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Global stats — aggregated from all completed bracket matches in this tournament
+router.get('/:id/global-stats', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const t = await getT(id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+
+    const [rows] = await pool.query<any[]>(
+      `SELECT parsed_data, game_duration FROM tournament_match_stats
+       WHERE tournament_id = ? AND game_end_ts IS NOT NULL
+       ORDER BY fetched_at ASC`,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ tournamentId: id, matchesCompleted: 0, players: [], lastUpdated: Date.now() });
+    }
+
+    type Acc = {
+      summonerName: string; tagLine: string;
+      gamesPlayed: number; wins: number;
+      totalKills: number; totalDeaths: number; totalAssists: number;
+      totalGold: number; totalDamage: number; totalVisionScore: number; totalCs: number;
+      totalMins: number;
+      pentaKills: number; quadraKills: number; tripleKills: number; doubleKills: number;
+      champCounts: Map<string, number>;
+    };
+
+    const playerMap = new Map<string, Acc>();
+
+    for (const row of rows) {
+      const data: any = typeof row.parsed_data === 'string' ? JSON.parse(row.parsed_data) : row.parsed_data;
+      const dur  = (row.game_duration as number) || (data.gameDuration as number) || 0;
+      const mins = Math.max(1, dur / 60);
+      const all: any[] = [...(data.blueTeam ?? []), ...(data.redTeam ?? [])];
+
+      for (const p of all) {
+        const key = `${p.summonerName}#${p.tagLine || ''}`;
+        if (!playerMap.has(key)) {
+          playerMap.set(key, {
+            summonerName: p.summonerName, tagLine: p.tagLine || '',
+            gamesPlayed: 0, wins: 0,
+            totalKills: 0, totalDeaths: 0, totalAssists: 0,
+            totalGold: 0, totalDamage: 0, totalVisionScore: 0, totalCs: 0,
+            totalMins: 0,
+            pentaKills: 0, quadraKills: 0, tripleKills: 0, doubleKills: 0,
+            champCounts: new Map(),
+          });
+        }
+        const acc = playerMap.get(key)!;
+        acc.gamesPlayed++;
+        if (p.win) acc.wins++;
+        acc.totalKills      += p.kills          ?? 0;
+        acc.totalDeaths     += p.deaths         ?? 0;
+        acc.totalAssists    += p.assists        ?? 0;
+        acc.totalGold       += p.goldEarned     ?? 0;
+        acc.totalDamage     += p.totalDamageDealt ?? 0;
+        acc.totalVisionScore += p.visionScore   ?? 0;
+        acc.totalCs         += p.cs             ?? 0;
+        acc.totalMins       += mins;
+        acc.pentaKills      += p.pentaKills  ?? 0;
+        acc.quadraKills     += p.quadraKills ?? 0;
+        acc.tripleKills     += p.tripleKills ?? 0;
+        acc.doubleKills     += p.doubleKills ?? 0;
+        acc.champCounts.set(p.championName, (acc.champCounts.get(p.championName) ?? 0) + 1);
+      }
+    }
+
+    const players = Array.from(playerMap.values()).map(acc => {
+      const m = Math.max(1, acc.totalMins);
+      const mostPlayedChamp = [...acc.champCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+      const avgKda = acc.totalDeaths === 0
+        ? acc.totalKills + acc.totalAssists
+        : (acc.totalKills + acc.totalAssists) / acc.totalDeaths;
+      return {
+        summonerName:     acc.summonerName,
+        tagLine:          acc.tagLine,
+        championPool:     [...acc.champCounts.keys()],
+        mostPlayedChamp,
+        gamesPlayed:      acc.gamesPlayed,
+        wins:             acc.wins,
+        losses:           acc.gamesPlayed - acc.wins,
+        winrate:          Math.round((acc.wins / acc.gamesPlayed) * 100),
+        totalKills:       acc.totalKills,
+        totalDeaths:      acc.totalDeaths,
+        totalAssists:     acc.totalAssists,
+        avgKda:           Math.round(avgKda * 100) / 100,
+        totalGold:        acc.totalGold,
+        avgGoldPerMin:    Math.round((acc.totalGold / m) * 10) / 10,
+        totalDamage:      acc.totalDamage,
+        avgDamagePerMin:  Math.round((acc.totalDamage / m) * 10) / 10,
+        totalVisionScore: acc.totalVisionScore,
+        avgVisionPerMin:  Math.round((acc.totalVisionScore / m) * 100) / 100,
+        totalCs:          acc.totalCs,
+        avgCsPerMin:      Math.round((acc.totalCs / m) * 10) / 10,
+        pentaKills:       acc.pentaKills,
+        quadraKills:      acc.quadraKills,
+        tripleKills:      acc.tripleKills,
+        doubleKills:      acc.doubleKills,
+      };
+    });
+
+    res.json({ tournamentId: id, matchesCompleted: rows.length, players, lastUpdated: Date.now() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Generate codes

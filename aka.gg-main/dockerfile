@@ -1,6 +1,11 @@
 # ---- Build (Vite/React) ----
 FROM node:20-alpine AS build
 WORKDIR /app
+
+# Inject backend URL at build time — set in Coolify as build arg
+ARG VITE_API_URL=http://localhost:4000
+ENV VITE_API_URL=$VITE_API_URL
+
 COPY package*.json ./
 RUN npm ci --no-audit
 COPY . .

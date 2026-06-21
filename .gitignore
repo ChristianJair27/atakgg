@@ -3,11 +3,40 @@ dist/
 dist-electron/
 dist-ssr/
 build/
+.next/
+.vite/
+
+# Env files — never commit real credentials
 .env
 .env.local
 .env.*.local
 *.local
+
+# OS / Editor
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.sln
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+
+# TypeScript build info
 tsconfig.*.tsbuildinfo
+
+# Lock files (keep package-lock.json, exclude bun/yarn/pnpm)
 bun.lockb
+yarn.lock
+pnpm-lock.yaml
+
+# Claude Code internal files
+CLAUDE.md
+.claude/
+
+# Overwolf build outputs
+atak-overwolf-companion/*.crx
+atak-overwolf-companion/*.zip

@@ -3,42 +3,106 @@
   "type": "WebApp",
   "meta": {
     "name": "ATAK AI Companion",
-    "version": "0.2.0",
+    "version": "0.9.0",
     "description": "Live AI Coach for League of Legends — ATAK.GG",
     "author": "ATAK GG",
     "icon": "icon.png",
-    "icon_gray": "icon.png"
+    "icon_gray": "icon.png",
+    "minimum-overwolf-version": "0.200.0",
+    "dock_button_title": "ATAK"
   },
-  "permissions": ["GameEvents", "Launcher"],
-  "game_targeting": {
-    "type": "dedicated",
-    "game_ids": [5426]
-  },
-  "windows": {
-    "background": {
-      "file": "background.html",
-      "show_in_taskbar": false,
-      "transparent": false,
-      "resizable": false,
-      "size": { "width": 0, "height": 0 },
-      "start_position": { "top": 0, "left": 0 }
+  "permissions": [
+    "GameInfo",
+    "GameEvents",
+    "Hotkeys",
+    "FileSystem",
+    "Tray"
+  ],
+  "data": {
+    "start_window": "background",
+    "game_targeting": {
+      "type": "dedicated",
+      "game_ids": [5426]
     },
-    "in_game": {
-      "file": "in_game.html",
-      "transparent": true,
-      "resizable": false,
-      "show_in_taskbar": false,
-      "keep_window_location": true,
-      "use_os_windowing": false,
-      "size": { "width": 420, "height": 520 },
-      "start_position": { "top": 80, "left": 20 }
+    "game_events": [5426],
+    "windows": {
+      "background": {
+        "file": "background.html",
+        "show_in_taskbar": false,
+        "transparent": false,
+        "resizable": false,
+        "size": { "width": 0, "height": 0 },
+        "start_position": { "top": 0, "left": 0 },
+        "is_background_page": true
+      },
+      "in_game": {
+        "file": "in_game.html",
+        "transparent": true,
+        "resizable": true,
+        "show_in_taskbar": false,
+        "keep_window_location": true,
+        "use_os_windowing": false,
+        "size": { "width": 380, "height": 520 },
+        "start_position": { "top": 80, "left": 20 },
+        "focus_game_takeover": "ReleaseOnHidden",
+        "focus_game_takeover_release_hotkey": "toggle_app"
+      },
+      "champ_select": {
+        "file": "champ_select.html",
+        "transparent": true,
+        "resizable": true,
+        "show_in_taskbar": false,
+        "keep_window_location": true,
+        "use_os_windowing": false,
+        "size": { "width": 800, "height": 590 },
+        "start_position": { "top": 80, "left": 1100 }
+      },
+      "queue_profile": {
+        "file": "queue_profile.html",
+        "transparent": true,
+        "resizable": false,
+        "show_in_taskbar": false,
+        "keep_window_location": true,
+        "use_os_windowing": false,
+        "size": { "width": 400, "height": 650 },
+        "start_position": { "top": 80, "left": 1490 }
+      },
+      "arena_augments": {
+        "file": "arena_augments.html",
+        "transparent": true,
+        "resizable": false,
+        "show_in_taskbar": false,
+        "keep_window_location": false,
+        "use_os_windowing": false,
+        "size": { "width": 540, "height": 134 },
+        "start_position": { "top": 76, "left": 690 }
+      },
+      "end_of_game": {
+        "file": "end_of_game.html",
+        "transparent": true,
+        "resizable": true,
+        "show_in_taskbar": true,
+        "keep_window_location": true,
+        "use_os_windowing": false,
+        "size": { "width": 900, "height": 600 },
+        "start_position": { "top": 120, "left": 200 }
+      }
+    },
+    "launch_events": [
+      {
+        "event": "GameLaunch",
+        "event_data": {
+          "game_ids": [5426]
+        },
+        "start_minimized": true
+      }
+    ],
+    "hotkeys": {
+      "toggle_app": {
+        "title": "Toggle ATAK Overlay",
+        "action-type": "toggle",
+        "default": "F9"
+      }
     }
-  },
-  "launch_events": [
-    {
-      "event": "GameLaunch",
-      "event_data": { "game_ids": [5426] },
-      "start_minimized": true
-    }
-  ]
+  }
 }

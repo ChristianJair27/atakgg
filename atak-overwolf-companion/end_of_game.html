@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ATAK — Match Summary</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:900px;min-height:600px;overflow-x:hidden;user-select:none}
+:root{
+  --gold:#c89b3c;--goldlt:#f0e6d3;--golddm:#785a28;
+  --teal:#0bc4e3;--red:#ef4444;--green:#22c55e;--blue:#3b82f6;
+  --glass:rgba(255,255,255,.05);--glass-b:rgba(255,255,255,.09);
+  --r:10px;
+}
+body{
+  font-family:'Segoe UI',system-ui,sans-serif;color:#fff;
+  background:
+    radial-gradient(ellipse 100% 40% at 50% -5%,rgba(11,196,227,.07),transparent 50%),
+    linear-gradient(180deg,#010a13 0%,#060b1a 100%);
+}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:rgba(200,155,60,.2);border-radius:2px}
+
+.g{
+  background:var(--glass);backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%);
+  border:1px solid var(--glass-b);border-radius:var(--r);position:relative;overflow:hidden;
+}
+.g::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);pointer-events:none}
+.g.gold-top::before{background:linear-gradient(90deg,transparent,rgba(200,155,60,.4),transparent)}
+.g.blue-top::before{background:linear-gradient(90deg,transparent,rgba(59,130,246,.45),transparent)}
+.g.red-top::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.45),transparent)}
+.g.teal-top::before{background:linear-gradient(90deg,transparent,rgba(11,196,227,.4),transparent)}
+
+/* ── Loading state ── */
+#loading-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:600px;gap:18px;
+}
+.ld-ring{
+  width:48px;height:48px;border-radius:50%;
+  border:3px solid rgba(200,155,60,.1);
+  border-top-color:var(--gold);
+  animation:spin 1.1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ld-text{font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.2);
+  animation:shimm 1.4s ease-in-out infinite}
+@keyframes shimm{0%,100%{opacity:.3}50%{opacity:.9}}
+
+/* ── Main layout (hidden until data) ── */
+#main{display:none;flex-direction:column;gap:0}
+
+/* ── Result banner ── */
+#result-banner{
+  height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;
+  position:relative;overflow:hidden;-webkit-app-region:drag;flex-shrink:0;
+}
+#result-banner.victory{
+  background:linear-gradient(90deg,rgba(11,196,227,.15) 0%,rgba(33,82,255,.1) 50%,rgba(11,196,227,.05) 100%);
+  border-bottom:1px solid rgba(11,196,227,.25);
+}
+#result-banner.defeat{
+  background:linear-gradient(90deg,rgba(239,68,68,.12) 0%,rgba(185,28,28,.08) 50%,rgba(239,68,68,.04) 100%);
+  border-bottom:1px solid rgba(239,68,68,.22);
+}
+#result-shimmer{
+  position:absolute;top:0;left:-100%;width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.04),transparent);
+  animation:shimpass 3s ease-in-out infinite;pointer-events:none;
+}
+@keyframes shimpass{0%{left:-100%}50%{left:150%}100%{left:150%}}
+#result-txt{font-size:36px;font-weight:900;letter-spacing:-.01em;line-height:1}
+#result-banner.victory #result-txt{color:var(--teal);text-shadow:0 0 40px rgba(11,196,227,.45)}
+#result-banner.defeat  #result-txt{color:var(--red);text-shadow:0 0 40px rgba(239,68,68,.4)}
+#result-meta{text-align:right;-webkit-app-region:no-drag}
+#result-mode{font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.25)}
+#result-time{font-size:22px;font-weight:900;color:rgba(255,255,255,.6);font-family:monospace}
+#close-btn{
+  -webkit-app-region:no-drag;position:absolute;top:10px;right:10px;
+  width:26px;height:26px;border-radius:8px;background:transparent;border:none;
+  cursor:pointer;color:rgba(255,255,255,.25);font-size:14px;transition:.15s;
+  display:flex;align-items:center;justify-content:center;
+}
+#close-btn:hover{background:rgba(239,68,68,.15);color:var(--red)}
+
+/* ── Your performance strip ── */
+#my-perf{
+  display:flex;align-items:center;gap:0;padding:10px 14px;flex-shrink:0;
+  border-bottom:1px solid rgba(255,255,255,.04);
+}
+#my-champ-wrap{position:relative;flex-shrink:0;margin-right:12px}
+#my-champ-img{width:54px;height:54px;border-radius:9px;object-fit:cover;border:2px solid rgba(200,155,60,.35);display:block}
+#my-champ-level{
+  position:absolute;bottom:-4px;right:-4px;font-size:8px;font-weight:900;
+  padding:1px 5px;background:#010a13;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:rgba(255,255,255,.7)
+}
+#my-kda-big{display:flex;align-items:baseline;gap:4px;margin-right:20px}
+.mkda-v{font-size:28px;font-weight:900;line-height:1}
+.mkda-sep{font-size:20px;color:rgba(255,255,255,.15);font-weight:300}
+#my-grade{
+  font-size:36px;font-weight:900;width:42px;text-align:center;flex-shrink:0;
+  margin-right:14px;font-style:italic;
+}
+.grade-s{color:#f0e6d3}.grade-a{color:var(--teal)}.grade-b{color:var(--green)}.grade-c{color:var(--gold)}.grade-d{color:var(--red)}
+.my-stat-col{display:flex;flex-direction:column;gap:1px;min-width:60px}
+.ms-v{font-size:14px;font-weight:800;color:#fff;line-height:1}
+.ms-l{font-size:6px;font-weight:700;letter-spacing:.2em;color:rgba(255,255,255,.22)}
+.vs-div{width:1px;height:36px;background:rgba(255,255,255,.05);margin:0 12px;align-self:center}
+#my-items-row{display:flex;gap:3px;margin-left:auto}
+.my-item{width:32px;height:32px;border-radius:6px;object-fit:cover;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04)}
+.my-item.empty{opacity:.15}
+
+/* ── Scoreboard ── */
+#scoreboard{flex:1;overflow-y:auto;padding:6px 0 10px}
+.team-block{margin-bottom:4px}
+.team-hdr{
+  display:flex;align-items:center;gap:8px;padding:5px 14px;
+  border-bottom:1px solid rgba(255,255,255,.04);
+}
+.team-hdr.blue{background:rgba(59,130,246,.07);border-top:1px solid rgba(59,130,246,.12)}
+.team-hdr.red{background:rgba(239,68,68,.07);border-top:1px solid rgba(239,68,68,.12)}
+.team-hdr.victory-hdr{background:rgba(11,196,227,.07);border-top:1px solid rgba(11,196,227,.15)}
+.team-hdr.defeat-hdr{background:rgba(239,68,68,.05);border-top:1px solid rgba(239,68,68,.1)}
+.th-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.th-blue .th-dot{background:var(--blue)}.th-red .th-dot{background:var(--red)}
+.th-name{font-size:8px;font-weight:700;letter-spacing:.2em;flex:1}
+.th-blue .th-name{color:rgba(59,130,246,.8)}.th-red .th-name{color:rgba(239,68,68,.8)}
+.th-win-badge{font-size:7px;font-weight:700;letter-spacing:.15em;padding:2px 8px;border-radius:20px}
+.th-win-badge.win{background:rgba(11,196,227,.12);color:var(--teal);border:1px solid rgba(11,196,227,.25)}
+.th-win-badge.loss{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.th-col-hdrs{margin-left:auto;display:flex;gap:0;font-size:6.5px;font-weight:700;letter-spacing:.15em;color:rgba(255,255,255,.2)}
+.th-ch{width:55px;text-align:center}.th-ch.wide{width:80px}
+
+/* Player row */
+.prow{
+  display:flex;align-items:center;gap:0;padding:5px 14px;
+  border-bottom:1px solid rgba(255,255,255,.025);
+  transition:background .12s;cursor:default;
+}
+.prow:hover{background:rgba(255,255,255,.02)}
+.prow.is-me{background:rgba(200,155,60,.05);border-left:2px solid rgba(200,155,60,.35)}
+.prow.is-me:hover{background:rgba(200,155,60,.07)}
+.pr-champ{width:30px;height:30px;border-radius:7px;object-fit:cover;flex-shrink:0;border:1px solid rgba(255,255,255,.08);margin-right:8px}
+.pr-name{width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:700;color:rgba(255,255,255,.75)}
+.pr-name.me{color:var(--gold)}
+.pr-multi{font-size:7px;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:3px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5)}
+.pr-multi.penta{background:rgba(239,68,68,.12);color:var(--red);border-color:rgba(239,68,68,.3)}
+.pr-multi.quadra{background:rgba(168,85,247,.1);color:#a855f7;border-color:rgba(168,85,247,.3)}
+.pr-multi.triple{background:rgba(11,196,227,.08);color:var(--teal);border-color:rgba(11,196,227,.25)}
+.pr-kda{width:55px;text-align:center;font-size:9.5px;font-weight:700;color:rgba(255,255,255,.7)}
+.pr-kda .dk{color:var(--green)}.pr-kda .dd{color:var(--red)}.pr-kda .da{color:var(--blue)}
+.pr-cs{width:50px;text-align:center;font-size:8px;color:rgba(255,255,255,.4);font-weight:600}
+.pr-gold{width:52px;text-align:center;font-size:8.5px;font-weight:700;color:var(--gold)}
+.pr-items{display:flex;gap:2px;width:220px;flex-shrink:0}
+.pi{width:24px;height:24px;border-radius:4px;object-fit:cover;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04)}
+.pi.empty{opacity:.1;border-style:dashed}
+.pi.trinket{border-color:rgba(200,155,60,.2)}
+.pr-dmg{flex:1;padding-left:10px;display:flex;align-items:center;gap:5px}
+.dmg-bar{flex:1;height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;position:relative}
+.dmg-fill{height:100%;border-radius:3px;transition:width .8s ease}
+.dmg-fill.ally{background:linear-gradient(90deg,rgba(11,196,227,.7),rgba(11,196,227,.9))}
+.dmg-fill.enemy{background:linear-gradient(90deg,rgba(239,68,68,.6),rgba(239,68,68,.8))}
+.dmg-txt{font-size:7.5px;font-weight:700;color:rgba(255,255,255,.35);min-width:34px;text-align:right;flex-shrink:0}
+.pr-vs{width:30px;text-align:center;font-size:7.5px;color:rgba(168,85,247,.7)}
+
+/* Arena placement badge */
+.arena-place{
+  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:900;flex-shrink:0;margin-right:8px;
+}
+.arena-place.p1{background:rgba(200,155,60,.2);color:#f0e6d3;border:2px solid rgba(200,155,60,.5)}
+.arena-place.p2{background:rgba(148,163,184,.15);color:#cbd5e1;border:2px solid rgba(148,163,184,.35)}
+.arena-place.p3{background:rgba(184,115,64,.15);color:#b87340;border:2px solid rgba(184,115,64,.35)}
+.arena-place.pX{background:rgba(255,255,255,.05);color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.1)}
+
+/* ── ATAK footer ── */
+#footer{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;border-top:1px solid rgba(255,255,255,.04);flex-shrink:0;
+}
+#footer-brand{display:flex;align-items:center;gap:6px}
+#footer-gem{width:14px;height:14px;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);
+  background:linear-gradient(135deg,var(--gold),var(--golddm))}
+#footer-nm{font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(200,155,60,.5)}
+#open-web-btn{
+  font-size:7.5px;font-weight:700;letter-spacing:.15em;padding:4px 14px;border-radius:6px;
+  background:rgba(200,155,60,.08);border:1px solid rgba(200,155,60,.2);color:rgba(200,155,60,.6);
+  cursor:pointer;transition:.15s;-webkit-app-region:no-drag;
+}
+#open-web-btn:hover{background:rgba(200,155,60,.14);color:var(--gold)}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading-state">
+  <div class="ld-ring"></div>
+  <div id="ld-text">PROCESSING MATCH DATA</div>
+</div>
+
+<!-- Main (hidden until data arrives) -->
+<div id="main">
+
+  <!-- Result banner -->
+  <div id="result-banner">
+    <div id="result-shimmer"></div>
+    <span id="result-txt">—</span>
+    <div id="result-meta">
+      <div id="result-mode">CLASSIC</div>
+      <div id="result-time">0:00</div>
+    </div>
+    <button id="close-btn" onclick="closeMe()">✕</button>
+  </div>
+
+  <!-- My performance strip -->
+  <div id="my-perf">
+    <div id="my-champ-wrap">
+      <img id="my-champ-img" src="" alt="" onerror="this.style.opacity='.08'"/>
+      <div id="my-champ-level">—</div>
+    </div>
+    <div id="my-kda-big">
+      <span class="mkda-v" id="mk-k" style="color:var(--green)">0</span>
+      <span class="mkda-sep">/</span>
+      <span class="mkda-v" id="mk-d" style="color:var(--red)">0</span>
+      <span class="mkda-sep">/</span>
+      <span class="mkda-v" id="mk-a" style="color:var(--blue)">0</span>
+    </div>
+    <div id="my-grade" class="grade-c">B</div>
+    <div class="my-stat-col">
+      <div class="ms-v" id="my-dmg">—</div>
+      <div class="ms-l">DMG DEALT</div>
+    </div>
+    <div class="vs-div"></div>
+    <div class="my-stat-col">
+      <div class="ms-v" id="my-cs">—</div>
+      <div class="ms-l">CS</div>
+    </div>
+    <div class="vs-div"></div>
+    <div class="my-stat-col">
+      <div class="ms-v" id="my-gold">—</div>
+      <div class="ms-l">GOLD</div>
+    </div>
+    <div class="vs-div"></div>
+    <div class="my-stat-col">
+      <div class="ms-v" id="my-vs">—</div>
+      <div class="ms-l">VISION</div>
+    </div>
+    <div id="my-items-row"></div>
+  </div>
+
+  <!-- Scoreboard -->
+  <div id="scoreboard"></div>
+
+  <!-- Footer -->
+  <div id="footer">
+    <div id="footer-brand">
+      <div id="footer-gem"></div>
+      <span id="footer-nm">ATAK AI COACH</span>
+    </div>
+    <button id="open-web-btn" onclick="openProfile()">VIEW FULL STATS ON ATAK.GG →</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const $ = id => document.getElementById(id)
+const BACKEND = 'http://localhost:4000'
+let ddPatch = null, lastEogData = null, currentPlatform = null
+
+async function getPatch() {
+  if (ddPatch) return ddPatch
+  try { ddPatch = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json())[0] }
+  catch { ddPatch = '15.1.1' }
+  return ddPatch
+}
+function champIcon(id) { return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${id}.png` }
+async function itemIcon(id) { const p = await getPatch(); return id && p ? `https://ddragon.leagueoflegends.com/cdn/${p}/img/item/${id}.png` : '' }
+
+function fmtGold(g) { return g >= 1000 ? (g/1000).toFixed(1)+'k' : String(Math.round(g)) }
+function fmtDmg(d)  { return d >= 1000 ? (d/1000).toFixed(1)+'k' : String(Math.round(d)) }
+function fmtTime(s) { const m=Math.floor(s/60),sec=s%60; return m+':'+(sec<10?'0':'')+sec }
+
+function calcGrade(win, kda, dmgPct, csPm) {
+  // Grade S → D
+  let score = 0
+  if (kda >= 5) score += 35; else if (kda >= 3) score += 25; else if (kda >= 2) score += 15; else if (kda >= 1) score += 5
+  if (dmgPct >= .25) score += 30; else if (dmgPct >= .18) score += 20; else if (dmgPct >= .12) score += 10
+  if (csPm >= 8) score += 20; else if (csPm >= 6) score += 13; else if (csPm >= 4) score += 6
+  if (win) score += 15
+  if (score >= 85) return 'S'
+  if (score >= 68) return 'A'
+  if (score >= 50) return 'B'
+  if (score >= 30) return 'C'
+  return 'D'
+}
+function gradeClass(g) { return { S:'grade-s', A:'grade-a', B:'grade-b', C:'grade-c', D:'grade-d' }[g] || 'grade-c' }
+
+function multiKillLabel(n) {
+  if (!n || n < 2) return null
+  const labels = [null,'Double','Triple','Quadra','Penta']
+  return labels[Math.min(n, 4)] || 'Penta'
+}
+function multiKillClass(n) {
+  if (n >= 5) return 'penta'; if (n >= 4) return 'quadra'; if (n >= 3) return 'triple'; return ''
+}
+
+function st(stats, key, def=0) { return stats?.[key] ?? def }
+
+async function buildItemRow(stats, cls, size=24) {
+  const patch = await getPatch()
+  const frag = document.createDocumentFragment()
+  const keys = ['ITEM0','ITEM1','ITEM2','ITEM3','ITEM4','ITEM5']
+  for (const k of keys) {
+    const id = st(stats, k, 0)
+    const img = document.createElement('img')
+    img.className = 'pi' + (cls ? ' '+cls : '')
+    img.style.width = img.style.height = size+'px'
+    if (id) { img.src = `https://ddragon.leagueoflegends.com/cdn/${patch}/img/item/${id}.png`; img.onerror = () => { img.style.opacity='.08' } }
+    else { img.className = 'pi empty'; img.src = '' }
+    frag.appendChild(img)
+  }
+  // Trinket
+  const t = st(stats, 'ITEM6', 0)
+  const tri = document.createElement('img')
+  tri.className = 'pi trinket'
+  tri.style.width = tri.style.height = size+'px'
+  if (t) { tri.src = `https://ddragon.leagueoflegends.com/cdn/${patch}/img/item/${t}.png`; tri.onerror = () => { tri.style.opacity='.08' } }
+  else { tri.className = 'pi empty'; tri.src = '' }
+  frag.appendChild(tri)
+  return frag
+}
+
+// ── Fill "my performance" strip ───────────────────────────────────────────
+async function fillMyPerf(localPlayer, maxDmg, gameMode) {
+  const s  = localPlayer.stats
+  const k  = st(s,'CHAMPIONS_KILLED') || st(s,'KILLS')
+  const d  = st(s,'DEATHS')
+  const a  = st(s,'ASSISTS')
+  const win = st(s,'WIN') === 1 || st(s,'WIN') === true
+  const dmg = st(s,'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS')
+  const cs  = st(s,'MINIONS_KILLED') + st(s,'NEUTRAL_MINIONS_KILLED')
+  const gold = st(s,'GOLD_EARNED')
+  const vs  = st(s,'VISION_SCORE')
+  const kda = d === 0 ? (k+a) : (k+a)/d
+
+  $('mk-k').textContent = k
+  $('mk-d').textContent = d
+  $('mk-a').textContent = a
+  $('my-dmg').textContent = fmtDmg(dmg)
+  $('my-cs').textContent  = cs
+  $('my-gold').textContent = fmtGold(gold)
+  $('my-vs').textContent  = vs
+
+  // Grade
+  const csPm = cs / 30  // rough 30 min estimate
+  const dmgPct = maxDmg > 0 ? dmg / maxDmg : 0
+  const grade = calcGrade(win, kda, dmgPct, csPm)
+  $('my-grade').textContent = grade
+  $('my-grade').className = gradeClass(grade)
+
+  // Champion image
+  $('my-champ-img').src = champIcon(localPlayer.championId)
+  $('my-champ-level').textContent = localPlayer.level || '—'
+
+  // Items
+  const row = $('my-items-row')
+  row.appendChild(await buildItemRow(s, null, 32))
+
+  if (window.gsap) gsap.from('#my-perf > *', { opacity:0, y:-6, duration:.4, stagger:.06, ease:'power2.out' })
+}
+
+// ── Scoreboard ────────────────────────────────────────────────────────────
+async function buildScoreboard(data) {
+  const sb = $('scoreboard'); sb.innerHTML = ''
+  const isArena = (data.gameMode || '').toUpperCase() === 'CHERRY'
+  const localTeamId = data.localPlayer?.teamId
+  const localSummoner = data.localPlayer?.summonerName
+
+  // Compute max damage across all players for bar scaling
+  let maxDmg = 1
+  for (const team of (data.teams || [])) {
+    for (const p of (team.players || [])) {
+      const d = st(p.stats,'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS')
+      if (d > maxDmg) maxDmg = d
+    }
+  }
+  // Also include local player
+  const ldmg = st(data.localPlayer?.stats, 'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS')
+  if (ldmg > maxDmg) maxDmg = ldmg
+
+  await fillMyPerf(data.localPlayer, maxDmg, data.gameMode)
+
+  if (isArena) {
+    await buildArenaScoreboard(sb, data, maxDmg, localSummoner)
+  } else {
+    await buildSRScoreboard(sb, data, maxDmg, localTeamId, localSummoner)
+  }
+
+  // GSAP entrance on rows
+  if (window.gsap) gsap.from('.prow', { opacity:0, x:-8, duration:.35, stagger:.025, ease:'power2.out', delay:.2 })
+}
+
+async function buildSRScoreboard(sb, data, maxDmg, localTeamId, localSummoner) {
+  const myTeamWon = (data.teams || []).find(t => t.players?.some(p => p.summonerName === localSummoner))?.isWinningTeam
+  for (const team of (data.teams || [])) {
+    const isBlue = team.teamId === 100
+    const isWin = team.isWinningTeam
+    const block = document.createElement('div'); block.className = 'team-block'
+    // Header
+    const hdr = document.createElement('div')
+    hdr.className = `team-hdr ${isBlue ? 'th-blue' : 'th-red'} ${isWin ? 'victory-hdr' : 'defeat-hdr'}`
+    hdr.innerHTML = `
+      <div class="th-dot"></div>
+      <span class="th-name">${isBlue ? 'BLUE TEAM' : 'RED TEAM'}</span>
+      <span class="th-win-badge ${isWin?'win':'loss'}">${isWin?'VICTORY':'DEFEAT'}</span>
+      <div class="th-col-hdrs">
+        <div class="th-ch">KDA</div>
+        <div class="th-ch">CS</div>
+        <div class="th-ch">GOLD</div>
+        <div style="width:220px;text-align:center">ITEMS</div>
+        <div style="flex:1;text-align:center;padding-left:10px">DAMAGE</div>
+      </div>
+    `
+    block.appendChild(hdr)
+    for (const p of (team.players || [])) {
+      const row = await buildPlayerRow(p, maxDmg, localSummoner, isBlue ? 'ally' : 'enemy')
+      block.appendChild(row)
+    }
+    sb.appendChild(block)
+  }
+}
+
+async function buildArenaScoreboard(sb, data, maxDmg, localSummoner) {
+  // Arena: all players, sorted by placement or kills
+  const allPlayers = []
+  for (const team of (data.teams || [])) allPlayers.push(...(team.players || []))
+  // Sort by placement if available, else by kills desc
+  allPlayers.sort((a,b) => {
+    const pa = st(a.stats,'SUBTEAM_PLACEMENT',99), pb = st(b.stats,'SUBTEAM_PLACEMENT',99)
+    if (pa !== pb) return pa - pb
+    return st(b.stats,'CHAMPIONS_KILLED') - st(a.stats,'CHAMPIONS_KILLED')
+  })
+  const block = document.createElement('div'); block.className = 'team-block'
+  const hdr = document.createElement('div')
+  hdr.className = 'team-hdr victory-hdr'
+  hdr.innerHTML = `
+    <span class="th-name" style="color:var(--gold)">ARENA — ALL PLAYERS</span>
+    <div class="th-col-hdrs">
+      <div class="th-ch">KDA</div>
+      <div style="width:220px;text-align:center">ITEMS</div>
+      <div style="flex:1;text-align:center;padding-left:10px">DAMAGE</div>
+    </div>
+  `
+  block.appendChild(hdr)
+  for (const p of allPlayers) {
+    const row = await buildPlayerRow(p, maxDmg, localSummoner, 'ally', true)
+    block.appendChild(row)
+  }
+  sb.appendChild(block)
+}
+
+async function buildPlayerRow(p, maxDmg, localSummoner, side, isArena=false) {
+  const s    = p.stats
+  const k    = st(s,'CHAMPIONS_KILLED') || st(s,'KILLS')
+  const d    = st(s,'DEATHS')
+  const a    = st(s,'ASSISTS')
+  const cs   = st(s,'MINIONS_KILLED') + st(s,'NEUTRAL_MINIONS_KILLED')
+  const gold = st(s,'GOLD_EARNED')
+  const dmg  = st(s,'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS')
+  const vs   = st(s,'VISION_SCORE')
+  const multi = st(s,'LARGEST_MULTI_KILL')
+  const place = st(s,'SUBTEAM_PLACEMENT',0)
+  const isMe = p.summonerName === localSummoner
+
+  const row = document.createElement('div')
+  row.className = `prow${isMe?' is-me':''}`
+
+  // Arena placement badge
+  if (isArena && place > 0) {
+    const plEl = document.createElement('div')
+    plEl.className = 'arena-place ' + (place===1?'p1':place===2?'p2':place===3?'p3':'pX')
+    plEl.textContent = place
+    row.appendChild(plEl)
+  }
+
+  // Champion icon
+  const img = document.createElement('img')
+  img.className = 'pr-champ'; img.src = champIcon(p.championId); img.onerror = () => { img.style.opacity = '.08' }
+  row.appendChild(img)
+
+  // Name + multi kill
+  const nameWrap = document.createElement('div')
+  nameWrap.style.display = 'flex'; nameWrap.style.alignItems = 'center'; nameWrap.style.flex = '1'; nameWrap.style.minWidth = '0'
+  const nameEl = document.createElement('span')
+  nameEl.className = `pr-name${isMe?' me':''}`;
+  nameEl.textContent = p.summonerName || '—'; nameWrap.appendChild(nameEl)
+  if (multi >= 2) {
+    const ml = document.createElement('span')
+    ml.className = `pr-multi ${multiKillClass(multi)}`
+    ml.textContent = multiKillLabel(multi); nameWrap.appendChild(ml)
+  }
+  row.appendChild(nameWrap)
+
+  // KDA
+  const kdaEl = document.createElement('div'); kdaEl.className = 'pr-kda'
+  kdaEl.innerHTML = `<span class="dk">${k}</span>/<span class="dd">${d}</span>/<span class="da">${a}</span>`
+  row.appendChild(kdaEl)
+
+  // CS
+  if (!isArena) {
+    const csEl = document.createElement('div'); csEl.className = 'pr-cs'; csEl.textContent = cs; row.appendChild(csEl)
+    const goldEl = document.createElement('div'); goldEl.className = 'pr-gold'; goldEl.textContent = fmtGold(gold); row.appendChild(goldEl)
+  }
+
+  // Items
+  const itemsWrap = document.createElement('div'); itemsWrap.className = 'pr-items'
+  itemsWrap.appendChild(await buildItemRow(s, isArena?'':'', 24))
+  row.appendChild(itemsWrap)
+
+  // Damage bar
+  const dmgWrap = document.createElement('div'); dmgWrap.className = 'pr-dmg'
+  const bar = document.createElement('div'); bar.className = 'dmg-bar'
+  const fill = document.createElement('div'); fill.className = `dmg-fill ${side}`
+  const pct = maxDmg > 0 ? Math.min(100, (dmg / maxDmg) * 100) : 0
+  fill.style.width = '0%'
+  bar.appendChild(fill); dmgWrap.appendChild(bar)
+  const dtxt = document.createElement('span'); dtxt.className = 'dmg-txt'; dtxt.textContent = fmtDmg(dmg)
+  dmgWrap.appendChild(dtxt)
+  row.appendChild(dmgWrap)
+
+  // Animate damage bars after append
+  setTimeout(() => { if (window.gsap) gsap.to(fill, { width: pct+'%', duration:.9, ease:'power2.out', delay:.3 })
+    else fill.style.width = pct+'%' }, 50)
+
+  // Vision (vision score)
+  const vsEl = document.createElement('div'); vsEl.className = 'pr-vs'; vsEl.textContent = vs; row.appendChild(vsEl)
+
+  return row
+}
+
+// ── Main render ───────────────────────────────────────────────────────────
+async function renderEog(data) {
+  lastEogData = data
+  await getPatch()
+
+  // Banner
+  const isArena = (data.gameMode || '').toUpperCase() === 'CHERRY'
+  const myWin   = data.localPlayer?.stats?.WIN === 1 || data.localPlayer?.stats?.WIN === true
+  const banner  = $('result-banner')
+  banner.className = myWin ? 'victory' : 'defeat'
+  $('result-txt').textContent = myWin ? 'VICTORY' : 'DEFEAT'
+  $('result-mode').textContent = isArena ? 'ARENA' : modeLabel(data.gameMode)
+  $('result-time').textContent = fmtTime(data.gameLength || 0)
+
+  // Show main, hide loading
+  $('loading-state').style.display = 'none'
+  $('main').style.display = 'flex'
+  $('main').style.flexDirection = 'column'
+  $('main').style.minHeight = '600px'
+
+  await buildScoreboard(data)
+
+  if (window.gsap) {
+    gsap.from('#result-banner', { opacity:0, y:-20, duration:.6, ease:'power3.out' })
+  }
+}
+
+function modeLabel(m) {
+  const map = { CLASSIC:'SUMMONER\'S RIFT', ARAM:'ARAM', CHERRY:'ARENA', URF:'URF', TUTORIAL:'TUTORIAL' }
+  return map[(m||'').toUpperCase()] || (m || 'CUSTOM')
+}
+
+function openProfile() {
+  const p = currentPlatform || 'la1'
+  const name = lastEogData?.localPlayer?.summonerName
+  if (!name) return
+  const url = `http://192.168.1.79:8080/stats/${p}/${encodeURIComponent(name)}`
+  if (typeof overwolf !== 'undefined') overwolf.utils.openUrlInDefaultBrowser(url)
+}
+function closeMe() {
+  if (typeof overwolf !== 'undefined') overwolf.windows.getCurrentWindow(r => { if (r.status==='success') overwolf.windows.close(r.window.id) })
+}
+
+// ── Overwolf message handler ──────────────────────────────────────────────
+if (typeof overwolf !== 'undefined') {
+  overwolf.windows.onMessageReceived.addListener(msg => {
+    const c = msg?.content; if (!c) return
+    if (c.type === 'eog-data' && c.data) renderEog(c.data)
+    if (c.type === 'eog-platform') currentPlatform = c.platform
+  })
+}
+
+// ── Dev mock ──────────────────────────────────────────────────────────────
+if (typeof overwolf === 'undefined') {
+  const mk = (sn,cid,k,d,a,cs,gold,dmg,win,items) => ({
+    botPlayer:false,championId:cid,level:13,summonerName:sn,teamId:win?200:100,
+    stats:{WIN:win?1:0,CHAMPIONS_KILLED:k,DEATHS:d,ASSISTS:a,MINIONS_KILLED:cs,NEUTRAL_MINIONS_KILLED:0,
+      GOLD_EARNED:gold,TOTAL_DAMAGE_DEALT_TO_CHAMPIONS:dmg,VISION_SCORE:22,
+      LARGEST_MULTI_KILL:2,ITEM0:items[0]||0,ITEM1:items[1]||0,ITEM2:items[2]||0,ITEM3:items[3]||0,ITEM4:items[4]||0,ITEM5:items[5]||0,ITEM6:3364}
+  })
+  const mockData = {
+    gameId:123456,gameLength:1842,gameMode:'CLASSIC',ranked:true,
+    localPlayer:mk('KisterKata',145,8,3,5,172,14200,32000,false,[3152,3006,3031,3139,3091,3033]),
+    teams:[
+      {teamId:100,isWinningTeam:true,isPlayerTeam:false,players:[
+        mk('TopLaner',84,4,2,8,201,13800,18000,true,[3071,3111,3083,3033,3053,3742]),
+        mk('Jungler',64,6,1,6,47,12400,24000,true,[3153,3006,3142,3036,3138,3156]),
+        mk('Midlaner',55,10,2,4,185,16200,35000,true,[3165,3020,3135,3157,3089,3174]),
+        mk('ADC',222,12,1,3,210,17800,41000,true,[3031,3006,3094,3139,3036,3033]),
+        mk('Support',12,1,5,14,28,7200,8000,true,[3109,3190,3050,3107,3504,2065]),
+      ]},
+      {teamId:200,isWinningTeam:false,isPlayerTeam:true,players:[
+        mk('KisterKata',145,8,3,5,172,14200,32000,false,[3152,3006,3031,3139,3091,3033]),
+        mk('Enemy1',24,3,6,4,180,11200,19000,false,[3090,3020,3135,3157,3089,3174]),
+        mk('Enemy2',91,5,4,7,55,10200,22000,false,[3068,3111,3742,3083,3053,3033]),
+        mk('Enemy3',202,7,3,2,195,13600,28000,false,[3031,3006,3094,3139,3036,3033]),
+        mk('Enemy4',412,0,7,10,22,6800,7000,false,[3109,3190,3050,3107,3504,2065]),
+      ]}
+    ]
+  }
+  setTimeout(() => renderEog(mockData), 300)
+}
+</script>
+</body>
+</html>

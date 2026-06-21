@@ -1,6 +1,15 @@
-import { app, BrowserWindow, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, session } from 'electron'
 import { join } from 'path'
 import { exec } from 'child_process'
+
+// Combined disable-features — must be a single appendSwitch call (multiple calls
+// for the same key overwrite each other in Chromium's command-line parser).
+//   HardwareMediaKeyHandling,MediaSessionService — prevents media-key conflicts with LoL
+//   OutOfBlinkCors — allows webview cross-origin requests to localhost backend
+app.commandLine.appendSwitch(
+  'disable-features',
+  'HardwareMediaKeyHandling,MediaSessionService,OutOfBlinkCors'
+)
 
 let mainWindow: BrowserWindow | null = null
 let isInGame = false
@@ -45,21 +54,25 @@ function setToWebMode() {
   if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.setResizable(true)
   mainWindow.setAlwaysOnTop(false)
+  mainWindow.setSkipTaskbar(false)
   mainWindow.setSize(1100, 700, true)
+  mainWindow.center()
   mainWindow.webContents.send('always-on-top-changed', false)
 }
 
 function setToLiveMode() {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const { width } = screen.getPrimaryDisplay().workAreaSize
-  mainWindow.setResizable(true)
-  mainWindow.setAlwaysOnTop(true, 'screen-saver')
+  mainWindow.setResizable(false)
+  // level 'screen-saver' + explicit z-order hint (3rd param) is the most
+  // reliable way to appear over borderless-windowed DirectX games on Win10/11.
+  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1)
+  mainWindow.setSkipTaskbar(true)
   mainWindow.setSize(420, 560, true)
-  // Pin to top-right corner so it's always visible over the game
   mainWindow.setPosition(width - 440, 20, true)
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
-  mainWindow.focus()
+  // Do NOT call focus() — stealing keyboard focus mid-game is disruptive.
   mainWindow.webContents.send('always-on-top-changed', true)
 }
 
@@ -71,18 +84,16 @@ function send(channel: string, ...args: any[]) {
 
 // ── League detection ──────────────────────────────────────────────────────────
 
-// True if any League process is running (client OR in-game)
+// Single tasklist call covering all LoL processes — avoids 3 parallel spawns
 function checkLeagueRunning(): Promise<boolean> {
   return new Promise((resolve) => {
-    const names = ['LeagueClient.exe', 'LeagueClientUx.exe', 'League of Legends.exe']
-    let found = false
-    let pending = names.length
-
-    names.forEach((name) => {
-      exec(`tasklist /FI "IMAGENAME eq ${name}" /NH`, { encoding: 'utf8' }, (_err, stdout) => {
-        if (stdout?.toLowerCase().includes(name.toLowerCase())) found = true
-        if (--pending === 0) resolve(found)
-      })
+    exec('tasklist /FI "STATUS eq RUNNING" /NH /FO CSV', { encoding: 'utf8' }, (_err, stdout) => {
+      const lower = (stdout ?? '').toLowerCase()
+      resolve(
+        lower.includes('leagueclient.exe') ||
+        lower.includes('leagueclientux.exe') ||
+        lower.includes('league of legends.exe')
+      )
     })
   })
 }
@@ -199,6 +210,12 @@ function stopGamePolling() {
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  // Allow the embedded webview (atak.gg dashboard) to use all permissions
+  // it needs — without this, buttons that trigger browser APIs get silently blocked.
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(true)
+  })
+
   createWindow()
   setToWebMode()
   startGamePolling()
