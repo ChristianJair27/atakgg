@@ -28,4 +28,10 @@ rendererConfig.plugins.push(new HtmlWebpackPlugin({
   inject: false,
 }));
 
+rendererConfig.plugins.push(new HtmlWebpackPlugin({
+  template: './src/renderer/end-of-game.html',
+  filename: path.join(__dirname, './dist/renderer/end-of-game.html'),
+  inject: false,
+}));
+
 module.exports = rendererConfig;

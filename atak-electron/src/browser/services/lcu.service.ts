@@ -41,6 +41,8 @@ export class LcuService extends EventEmitter {
   private pollInterval: NodeJS.Timeout | null = null;
   private champSelectActive = false;
   private lastChampionId = 0;
+  private lastGameflowPhase = '';
+  private eogFetched = false;
 
   public startPolling() {
     if (this.pollInterval) return;
@@ -56,6 +58,8 @@ export class LcuService extends EventEmitter {
     this.lockfile = null;
     this.champSelectActive = false;
     this.lastChampionId = 0;
+    this.lastGameflowPhase = '';
+    this.eogFetched = false;
     console.log('[ATAK LCU] stopped');
   }
 
@@ -100,6 +104,59 @@ export class LcuService extends EventEmitter {
     });
   }
 
+  // Watch the gameflow phase; when it reaches EndOfGame, fetch the end-of-game
+  // stats block (works for ALL modes: SR, ARAM, Arena/CHERRY…) and emit it once.
+  private async checkGameflow() {
+    if (!this.lockfile) return;
+    let phase = '';
+    try {
+      const p = await this.lcuGet(this.lockfile, '/lol-gameflow/v1/gameflow-phase');
+      phase = typeof p === 'string' ? p : '';
+    } catch { return; }
+
+    if (phase === 'EndOfGame' || phase === 'PreEndOfGame') {
+      if (!this.eogFetched) {
+        try {
+          const block = await this.lcuGet(this.lockfile, '/lol-end-of-game/v1/eog-stats-block');
+          if (block && !block.errorCode && Array.isArray(block.teams) && block.teams.length) {
+            await this.normalizeEog(block);
+            this.eogFetched = true;
+            console.log('[ATAK EOG] end-of-game stats ready:', block.gameMode);
+            this.emit('eog-stats', block);
+          }
+        } catch { /* block not ready yet — retry next poll */ }
+      }
+    } else {
+      if (this.eogFetched) this.emit('eog-closed');
+      this.eogFetched = false;
+    }
+    this.lastGameflowPhase = phase;
+  }
+
+  // The raw eog-stats-block doesn't always carry gameMode / a resolved local
+  // player, so fill those in (best-effort) before emitting.
+  private async normalizeEog(block: any) {
+    if (!block.gameMode) {
+      try {
+        const s = await this.lcuGet(this.lockfile!, '/lol-gameflow/v1/session');
+        block.gameMode = s?.map?.gameMode || s?.gameData?.queue?.gameMode || 'CLASSIC';
+      } catch { block.gameMode = 'CLASSIC'; }
+    }
+    const all: any[] = [];
+    for (const t of (block.teams || [])) for (const p of (t.players || [])) all.push(p);
+    if (!block.localPlayer) {
+      let me = all.find((p) => p.isLocalPlayer || p.localPlayer);
+      if (!me) {
+        try {
+          const cur = await this.lcuGet(this.lockfile!, '/lol-summoner/v1/current-summoner');
+          const nm = cur?.gameName || cur?.displayName;
+          if (nm) me = all.find((p) => p.summonerName === nm || p.riotIdGameName === nm);
+        } catch {}
+      }
+      block.localPlayer = me || all[0] || { stats: {}, championId: 0, level: 0 };
+    }
+  }
+
   private async poll() {
     // Re-find lockfile each poll in case LoL just launched
     if (!this.lockfile) {
@@ -113,6 +170,9 @@ export class LcuService extends EventEmitter {
         return;
       }
     }
+
+    // Detect end-of-game (all modes) and surface the post-game stats block.
+    await this.checkGameflow();
 
     try {
       const session = await this.lcuGet(this.lockfile, '/lol-champ-select/v1/session');

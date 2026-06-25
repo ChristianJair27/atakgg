@@ -8,6 +8,7 @@ import { LcuService } from './services/lcu.service';
 import { MainWindowController } from './controllers/main-window.controller';
 import { OverlayController } from './controllers/overlay.controller';
 import { ChampSelectController } from './controllers/champ-select.controller';
+import { EndOfGameController } from './controllers/end-of-game.controller';
 
 const LOG_FILE = path.join(require('os').homedir(), 'Desktop', 'atak-debug.log');
 const origLog = console.log.bind(console);
@@ -27,6 +28,9 @@ const bootstrap = (): Application => {
   const overlayController = new OverlayController(overlayService, liveClientService);
   const mainWindowController = new MainWindowController(overlayService, liveClientService);
   const champSelectController = new ChampSelectController(lcuService);
+  // Post-game stats window (all modes) — self-subscribes to LCU 'eog-stats'.
+  const endOfGameController = new EndOfGameController(lcuService);
+  void endOfGameController;
   return new Application(overlayService, liveClientService, lcuService, mainWindowController, overlayController, champSelectController);
 };
 
