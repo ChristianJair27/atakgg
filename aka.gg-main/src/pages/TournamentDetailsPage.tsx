@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   Trophy, Calendar, Users, ArrowLeft, Copy, Check, Zap,
   BarChart2, GitBranch, List, Play, RefreshCw, UserCheck,
-  Lock, Shield, ChevronRight, Activity,
+  Lock, Shield, Activity, Clock,
 } from 'lucide-react';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import gsap from 'gsap';
@@ -15,6 +15,32 @@ import { TournamentGlobalStats } from '@/components/TournamentGlobalStats';
 import { useMatchStats } from '@/hooks/useMatchStats';
 import { useTournamentGlobalStats } from '@/hooks/useTournamentGlobalStats';
 import { Toast } from '@/components/Toast';
+import { toast } from '@/components/ui/sonner';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+
+// Confirmation dialog wrapping any trigger button (replaces native confirm()).
+function ConfirmButton({ trigger, title, description, onConfirm }: {
+  trigger: React.ReactNode; title: string; description: string; onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      <AlertDialogContent className="bg-[#0a0a0c]/95 backdrop-blur-xl border border-white/[0.08] text-white">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription className="text-gray-400">{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-white">Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} className="gradient-red border-0 hover:opacity-90">Confirmar</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 type TournamentPhase = 'registration' | 'checkin' | 'active' | 'complete';
 
@@ -114,8 +140,11 @@ function CheckinPanel({ tournamentId, onDone }: { tournamentId:string; onDone:()
     try {
       const { data } = await axiosInstance.post(`/api/tournaments/${tournamentId}/checkin`, { teamName, captainRiotId });
       setSuccess(`✓ Check-in confirmado! ${data.checkedIn}/${data.total} equipos listos.`);
+      toast.success('Check-in confirmado', { description: `${data.checkedIn}/${data.total} equipos listos` });
       onDone();
-    } catch (err: any) { alert(err.response?.data?.error || 'Error al hacer check-in'); }
+    } catch (err: any) {
+      toast.error('No se pudo hacer check-in', { description: err.response?.data?.error || 'Error al hacer check-in' });
+    }
     finally { setLoading(false); }
   };
 
@@ -132,17 +161,17 @@ function CheckinPanel({ tournamentId, onDone }: { tournamentId:string; onDone:()
       <p className="text-gray-400 text-sm mb-4">Confirma antes de que inicie el torneo.</p>
       <div className="flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-44">
-          <label className="text-xs text-gray-500 block mb-1">Nombre del equipo</label>
-          <input value={teamName} onChange={e=>setTeamName(e.target.value)}
+          <label htmlFor="checkin-team" className="text-xs text-gray-500 block mb-1">Nombre del equipo</label>
+          <input id="checkin-team" value={teamName} onChange={e=>setTeamName(e.target.value)}
             placeholder="Exactamente como te inscribiste"
             className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white
-              placeholder:text-gray-700 outline-none focus:border-yellow-500/50 transition-colors" />
+              placeholder:text-gray-600 outline-none focus:border-yellow-500/50 transition-colors" />
         </div>
         <div className="flex-1 min-w-44">
-          <label className="text-xs text-gray-500 block mb-1">Riot ID del capitán</label>
-          <input value={captainRiotId} onChange={e=>setCaptain(e.target.value)} placeholder="Player#LA1"
+          <label htmlFor="checkin-captain" className="text-xs text-gray-500 block mb-1">Riot ID del capitán</label>
+          <input id="checkin-captain" value={captainRiotId} onChange={e=>setCaptain(e.target.value)} placeholder="Player#LA1"
             className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white
-              placeholder:text-gray-700 outline-none focus:border-yellow-500/50 transition-colors" />
+              placeholder:text-gray-600 outline-none focus:border-yellow-500/50 transition-colors" />
         </div>
         <button onClick={handle} disabled={loading || !teamName}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500
@@ -163,7 +192,7 @@ function AdminPanel({ tournament, registrations, onRefresh }: {
   const run = async (key:string, fn:()=>Promise<void>) => {
     setLoading(key);
     try { await fn(); onRefresh(); }
-    catch (err:any) { alert('Error: '+(err.response?.data?.error||err.message)); }
+    catch (err:any) { toast.error('Error', { description: err.response?.data?.error || err.message }); }
     finally { setLoading(null); }
   };
   const checkedIn = registrations.filter(r=>r.checkedIn).length;
@@ -184,31 +213,41 @@ function AdminPanel({ tournament, registrations, onRefresh }: {
               Cerrar inscripciones ({registrations.length})
             </button>
             {registrations.length >= 2 && (
-              <button disabled={loading==='start'}
-                onClick={()=>{if(!confirm(`Iniciar directo con ${registrations.length} equipos?`))return;
-                  run('start',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/start`).then(()=>{}));}}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-700 hover:bg-green-600
-                  text-white text-sm font-semibold transition-all disabled:opacity-40">
-                {loading==='start'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Play className="h-4 w-4"/>}
-                Iniciar directo
-              </button>
+              <ConfirmButton
+                title="Iniciar torneo directo"
+                description={`Se generará el bracket con ${registrations.length} equipos inscritos y comenzará el torneo. Esta acción no se puede deshacer.`}
+                onConfirm={()=>run('start',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/start`).then(()=>{}))}
+                trigger={
+                  <button disabled={loading==='start'}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-700 hover:bg-green-600
+                      text-white text-sm font-semibold transition-all disabled:opacity-40">
+                    {loading==='start'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Play className="h-4 w-4"/>}
+                    Iniciar directo
+                  </button>
+                }
+              />
             )}
           </>
         )}
         {tournament.phase === 'checkin' && (
-          <button disabled={loading==='start'||checkedIn<2}
-            onClick={()=>{if(!confirm(`Iniciar con ${checkedIn} equipos?`))return;
-              run('start',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/start`).then(()=>{}));}}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-700 hover:bg-green-600
-              text-white text-sm font-semibold transition-all disabled:opacity-40">
-            {loading==='start'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Play className="h-4 w-4"/>}
-            Iniciar torneo ({checkedIn}/{registrations.length} check-in)
-          </button>
+          <ConfirmButton
+            title="Iniciar torneo"
+            description={`Se generará el bracket con ${checkedIn} equipos que hicieron check-in. Esta acción no se puede deshacer.`}
+            onConfirm={()=>run('start',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/start`).then(()=>{}))}
+            trigger={
+              <button disabled={loading==='start'||checkedIn<2}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-700 hover:bg-green-600
+                  text-white text-sm font-semibold transition-all disabled:opacity-40">
+                {loading==='start'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Play className="h-4 w-4"/>}
+                Iniciar torneo ({checkedIn}/{registrations.length} check-in)
+              </button>
+            }
+          />
         )}
         {tournament.riotTournamentId && (
           <button disabled={loading==='codes'}
             onClick={()=>run('codes',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/generate-codes`,{count:20})
-              .then(({data})=>alert(`✅ ${data.generated} códigos. Pool: ${data.poolSize}`)))}
+              .then(({data})=>{ toast.success(`${data.generated} códigos generados`, { description: `Pool disponible: ${data.poolSize}` }); }))}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600
               text-white text-sm font-semibold transition-all disabled:opacity-40">
             {loading==='codes'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Zap className="h-4 w-4"/>}
@@ -224,11 +263,6 @@ function AdminPanel({ tournament, registrations, onRefresh }: {
       )}
     </GlassCard>
   );
-}
-
-// helper missing import
-function Clock({ className }: { className?: string }) {
-  return <span className={className}>⏰</span>;
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
@@ -434,7 +468,10 @@ export default function TournamentDetailsPage() {
     try {
       const { data } = await axiosInstance.post(`/api/tournaments/${id}/matches/${matchId}/activate`);
       await fetchAll(); return data.code as string|null;
-    } catch (err:any) { alert('Error: '+(err.response?.data?.error||err.message)); return null; }
+    } catch (err:any) {
+      toast.error('No se pudo activar el partido', { description: err.response?.data?.error || err.message });
+      return null;
+    }
   };
 
   const handleResult = async (matchId:string, winner:string, score1:number, score2:number) => {
@@ -442,8 +479,14 @@ export default function TournamentDetailsPage() {
     try {
       const { data } = await axiosInstance.post(`/api/tournaments/${id}/matches/${matchId}/result`, { winner, score1, score2 });
       await fetchAll();
-      if (data.tournamentComplete) alert(`🏆 Torneo finalizado! Campeón: ${data.champion}`);
-    } catch (err:any) { alert('Error: '+(err.response?.data?.error||err.message)); }
+      if (data.tournamentComplete) {
+        toast.success('🏆 ¡Torneo finalizado!', { description: `Campeón: ${data.champion}`, duration: 8000 });
+      } else {
+        toast.success('Resultado registrado', { description: `${winner} avanza` });
+      }
+    } catch (err:any) {
+      toast.error('No se pudo registrar el resultado', { description: err.response?.data?.error || err.message });
+    }
     finally { setReportingMatch(null); }
   };
 
@@ -580,7 +623,7 @@ export default function TournamentDetailsPage() {
             <motion.div key="bracket" initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0}}>
               {tournament.bracket?.length ? (
                 <TournamentBracket
-                  bracket={tournament.bracket} maxRound={maxRound}
+                  bracket={tournament.bracket as React.ComponentProps<typeof TournamentBracket>['bracket']} maxRound={maxRound}
                   tournamentId={tournament.id}
                   onActivateMatch={handleActivate}
                   onReportResult={handleResult}
@@ -677,8 +720,8 @@ export default function TournamentDetailsPage() {
                         {reg.contact && (
                           <span className="text-xs text-gray-600 flex-shrink-0">{reg.contact}</span>
                         )}
-                        <div className="flex items-center gap-1">
-                          <span className="font-mono text-xs text-gray-600">{reg.teamName}</span>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-xs text-gray-600 hidden sm:inline">{reg.players.length} jug.</span>
                           <CopyButton text={reg.captainRiotId} />
                         </div>
                       </div>

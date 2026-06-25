@@ -24,6 +24,10 @@ interface BracketMatch {
   matchStatus: MatchStatus;
   score1?: number; score2?: number;
   gameId?: number; gameRegion?: string;
+  // Registered players' PUUIDs per team, captured when the code is generated.
+  // Used to (a) build the code allowlist and (b) attribute the winning team
+  // from the Riot callback's winningTeam puuids.
+  team1Puuids?: string[]; team2Puuids?: string[];
 }
 interface TeamRegistration {
   teamName: string; captainRiotId: string;
@@ -98,6 +102,15 @@ async function initTables() {
       INDEX idx_riot_match (riot_match_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  // Key/value settings — persists the Riot provider id across restarts so we
+  // don't register a brand-new provider (burning production quota) on every boot.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      k          VARCHAR(100) PRIMARY KEY,
+      v          TEXT,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   // New columns (idempotent)
   for (const col of [
     `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS region VARCHAR(10) DEFAULT 'la1'`,
@@ -137,6 +150,28 @@ initTables().catch(err => console.error('[tournaments] initTables error:', err.m
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
 function parseJson(v: any) { if (!v) return undefined; return typeof v === 'string' ? JSON.parse(v) : v; }
+
+// ─── App settings (key/value) ───────────────────────────────────────────────
+async function getSetting(key: string): Promise<string | null> {
+  const [[row]] = await pool.query<any[]>('SELECT v FROM app_settings WHERE k = ?', [key]);
+  return row ? row.v : null;
+}
+async function setSetting(key: string, value: string) {
+  await pool.query(
+    'INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)',
+    [key, value]
+  );
+}
+
+// Returns the persisted Riot provider id, creating (and storing) one only the
+// first time. Survives restarts, so we never spawn duplicate providers in Riot.
+async function getOrCreateProviderId(): Promise<number> {
+  const stored = await getSetting('riot_provider_id');
+  if (stored) return Number(stored);
+  const p = await createProvider();
+  await setSetting('riot_provider_id', String(p.id));
+  return p.id;
+}
 
 function rowToTournament(row: any): TournamentData {
   return {
@@ -214,6 +249,7 @@ async function getRegs(tournamentId: string): Promise<TeamRegistration[]> {
 function isOwner(req: any, t: TournamentData) {
   return req.auth?.userId === t.createdBy || req.auth?.role === 'admin';
 }
+function isAdmin(req: any) { return req.auth?.role === 'admin'; }
 
 // ─── Match stats DB helpers ───────────────────────────────────────────────────
 
@@ -396,6 +432,113 @@ async function tryDetectGameId(
   }
 }
 
+// ─── Allowlist / code / result helpers ───────────────────────────────────────
+
+// Resolve the registered players' PUUIDs for one team (captain + roster).
+// Best-effort: players with malformed Riot IDs or unresolvable accounts are
+// silently skipped. Results are cached 10 min via the shared live cache.
+async function resolveTeamPuuids(t: TournamentData, teamName: string | null): Promise<string[]> {
+  if (!teamName) return [];
+  const regs = await getRegs(t.id);
+  const reg = regs.find(r => r.teamName === teamName);
+  if (!reg) return [];
+  const platform = t.region || 'la1';
+  const riotIds = [...new Set(
+    [reg.captainRiotId, ...(reg.players || []).map(p => p.riotId)].filter(Boolean)
+  )];
+  const puuids: string[] = [];
+  for (const rid of riotIds) {
+    const ck = `puuid:${platform}:${rid}`;
+    const cached = lcGet(ck);
+    if (cached !== undefined) { if (cached) puuids.push(cached as string); continue; }
+    const [gameName, tagLine] = rid.split('#');
+    if (!gameName || !tagLine) { lcSet(ck, null, 10 * 60_000); continue; }
+    try {
+      const account = await getAccountByRiotId(gameName.trim(), tagLine.trim(), { platformHint: platform });
+      const puuid = account?.puuid ?? null;
+      lcSet(ck, puuid, 10 * 60_000);
+      if (puuid) puuids.push(puuid);
+    } catch { lcSet(ck, null, 60_000); }
+  }
+  return puuids;
+}
+
+// Generate (or fall back to a pooled) tournament code for a specific bracket
+// match, restricting it to both teams' registered players (allowlist) and
+// embedding {tId, mId} in the code metadata so the Riot callback can resolve
+// the result automatically. Mutates t.bracket[mi]; caller is responsible for saveT.
+async function assignCodeToMatch(t: TournamentData, mi: number): Promise<string | null> {
+  const match = t.bracket![mi];
+  if (!match.team1 || !match.team2) return null;
+
+  const [team1Puuids, team2Puuids] = await Promise.all([
+    resolveTeamPuuids(t, match.team1),
+    resolveTeamPuuids(t, match.team2),
+  ]);
+  match.team1Puuids = team1Puuids;
+  match.team2Puuids = team2Puuids;
+
+  let code: string | null = null;
+  if (t.riotTournamentId) {
+    try {
+      const metadata = JSON.stringify({ tId: t.id, mId: match.id });
+      const codes = await generateCodes(t.riotTournamentId, 1, {
+        metadata,
+        allowedParticipants: [...team1Puuids, ...team2Puuids],
+      });
+      code = codes[0] || null;
+    } catch (e: any) {
+      console.error(`[assignCode] Riot code gen falló para ${match.id}:`, e.message);
+    }
+  }
+  // Fallback: a pre-generated pooled code (no allowlist / no metadata).
+  if (!code) code = t.codePool.shift() || null;
+
+  match.code = code;
+  match.matchStatus = code ? 'active' : 'ready';
+  return code;
+}
+
+// Mark a match complete for `winner`, advance the winner to the next round
+// (assigning that match a fresh code), update standings and tournament phase.
+// Mutates t; caller is responsible for saveT.
+async function applyResult(
+  t: TournamentData, mi: number, winner: string,
+  score1?: number, score2?: number
+) {
+  const match = t.bracket![mi];
+  const loser = winner === match.team1 ? match.team2 : match.team1;
+  t.bracket![mi] = {
+    ...match, winner, matchStatus: 'complete',
+    score1: score1 !== undefined ? score1 : match.score1,
+    score2: score2 !== undefined ? score2 : match.score2,
+  };
+
+  // Advance winner to next round
+  const nextId = `r${match.round + 1}m${Math.ceil(match.matchNumber / 2)}`;
+  const ni = t.bracket!.findIndex(m => m.id === nextId);
+  if (ni !== -1) {
+    if (match.matchNumber % 2 === 1) t.bracket![ni].team1 = winner;
+    else                            t.bracket![ni].team2 = winner;
+    if (t.bracket![ni].team1 && t.bracket![ni].team2) {
+      await assignCodeToMatch(t, ni);
+    }
+  }
+
+  // Standings
+  if (t.standings) {
+    t.standings = t.standings
+      .map(s => s.team === winner ? { ...s, wins: s.wins + 1, points: s.points + 3 }
+              : s.team === loser  ? { ...s, losses: s.losses + 1 } : s)
+      .sort((a, b) => b.points - a.points)
+      .map((s, i) => ({ ...s, position: i + 1 }));
+  }
+
+  // Completion
+  const maxRound = Math.max(...t.bracket!.map(m => m.round));
+  if (t.bracket!.find(m => m.round === maxRound)?.matchStatus === 'complete') t.phase = 'complete';
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 // GET all
@@ -416,11 +559,7 @@ router.post('/', requireAuth, async (req: any, res) => {
 
   if (createRiot) {
     try {
-      let providerId = req.app.locals.riotProviderId;
-      if (!providerId) {
-        const p = await createProvider(); providerId = p.id;
-        req.app.locals.riotProviderId = providerId;
-      }
+      const providerId = await getOrCreateProviderId();
       const rt = await createTournament(providerId, name);
       riotTournamentId = rt.id;
       initialCodes = await generateCodes(riotTournamentId, Math.min((maxParticipants||16)*2, 100));
@@ -451,27 +590,86 @@ router.post('/', requireAuth, async (req: any, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// Riot callback
+// Riot callback — fired when a game played with a tournament code ends.
+// Resolves the match via the code metadata ({tId, mId}) — falling back to a
+// shortCode scan — then records the gameId and auto-advances the bracket using
+// the winningTeam PUUIDs, so no manual result report is needed.
 router.post('/tournament-callback', async (req, res) => {
-  const { shortCode, gameId, region } = req.body;
-  console.log('[Riot Callback]', req.body);
-  if (shortCode && gameId) {
-    try {
-      const platform = riotRegionToPlatform(region || 'LAN');
-      const [rows] = await pool.query<any[]>('SELECT id, bracket FROM tournaments WHERE bracket IS NOT NULL');
-      for (const row of rows) {
-        const bracket: BracketMatch[] = parseJson(row.bracket) || [];
-        const idx = bracket.findIndex(m => m.code === shortCode);
-        if (idx !== -1) {
-          bracket[idx].gameId = Number(gameId);
-          bracket[idx].gameRegion = platform;
-          await pool.query('UPDATE tournaments SET bracket=? WHERE id=?', [JSON.stringify(bracket), row.id]);
-          break;
+  const body = req.body || {};
+  const { shortCode, gameId, region } = body;
+  const winningTeam = body.winningTeam ?? body.winningTeamPlayers ?? [];
+  const metaRaw = body.metaData ?? body.metadata;
+  console.log('[Riot Callback]', JSON.stringify(body).slice(0, 600));
+
+  try {
+    // 1. Locate tournament + match — prefer embedded metadata, else scan by code.
+    let t: TournamentData | null = null;
+    let mi = -1;
+    if (metaRaw) {
+      try {
+        const meta = typeof metaRaw === 'string' ? JSON.parse(metaRaw) : metaRaw;
+        if (meta?.tId && meta?.mId) {
+          t = await getT(meta.tId);
+          if (t?.bracket) mi = t.bracket.findIndex(m => m.id === meta.mId);
         }
+      } catch { /* metadata not JSON — fall through to code scan */ }
+    }
+    if ((!t || mi === -1) && shortCode) {
+      const [rows] = await pool.query<any[]>('SELECT id FROM tournaments WHERE bracket IS NOT NULL');
+      for (const row of rows) {
+        const cand = await getT(row.id);
+        const idx = cand?.bracket?.findIndex(m => m.code === shortCode) ?? -1;
+        if (idx !== -1) { t = cand; mi = idx; break; }
       }
-    } catch (err) { console.error('[Callback] error:', err); }
-  }
+    }
+    if (!t || mi === -1) {
+      console.warn('[Callback] no se encontró el partido (code=%s)', shortCode);
+      return res.status(200).send('OK');
+    }
+
+    const match = t.bracket![mi];
+    // 2. Record gameId / region
+    if (gameId) {
+      match.gameId = Number(gameId);
+      match.gameRegion = riotRegionToPlatform(region || t.region || 'LAN');
+    }
+
+    // 3. Auto-resolve the winner from the winningTeam PUUIDs.
+    if (match.matchStatus !== 'complete' && t.phase === 'active') {
+      const winPuuids = (Array.isArray(winningTeam) ? winningTeam : [])
+        .map((p: any) => (typeof p === 'string' ? p : p?.puuid))
+        .filter(Boolean) as string[];
+      const t1 = match.team1Puuids ?? [];
+      const t2 = match.team2Puuids ?? [];
+      const t1hits = winPuuids.filter(p => t1.includes(p)).length;
+      const t2hits = winPuuids.filter(p => t2.includes(p)).length;
+      const winner = t1hits > t2hits ? match.team1 : t2hits > t1hits ? match.team2 : null;
+      if (winner) {
+        await applyResult(t, mi, winner);
+        console.log(`[Callback] auto-resultado: "${winner}" gana ${match.id}`);
+      } else {
+        console.warn('[Callback] no se pudo atribuir ganador para %s (sin coincidencia de PUUIDs)', match.id);
+      }
+    }
+
+    await saveT(t);
+  } catch (err) { console.error('[Callback] error:', err); }
   res.status(200).send('OK');
+});
+
+// GET /debug-list — list all tournament IDs (for debugging).
+// Declared BEFORE GET /:id so the literal path isn't captured as an :id param.
+router.get('/debug-list', requireAuth, async (req: any, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Solo admin' });
+  try {
+    const [rows] = await pool.query<any[]>(
+      'SELECT id, name, phase, riot_tournament_id, region FROM tournaments ORDER BY created_at DESC'
+    );
+    res.json(rows.map(r => ({
+      id: r.id, name: r.name, phase: r.phase,
+      riotTournamentId: r.riot_tournament_id, region: r.region,
+    })));
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // GET by id
@@ -575,14 +773,17 @@ router.post('/:id/start', requireAuth, async (req: any, res) => {
 
     const teams = activeRegs.map(r=>r.teamName);
     const bracket = generateBracket(teams);
-    bracket.filter(m=>m.round===1&&m.matchStatus==='ready').forEach(m=>{
-      const code=t.codePool.shift()||null;
-      if (code) { m.code=code; m.matchStatus='active'; }
-    });
+    t.bracket = bracket;
+    // Assign an allowlisted, metadata-tagged code to each ready round-1 match.
+    for (let i = 0; i < bracket.length; i++) {
+      if (bracket[i].round === 1 && bracket[i].matchStatus === 'ready') {
+        await assignCodeToMatch(t, i);
+      }
+    }
     const standings: Standing[] = teams.map((team,i)=>({position:i+1,team,wins:0,losses:0,points:0}));
-    t.phase='active'; t.bracket=bracket; t.standings=standings; t.participants=teams.length;
+    t.phase='active'; t.standings=standings; t.participants=teams.length;
     await saveT(t);
-    res.json({ success:true, bracket, standings });
+    res.json({ success:true, bracket:t.bracket, standings });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
@@ -609,12 +810,7 @@ router.post('/:id/matches/:matchId/activate', requireAuth, async (req: any, res)
     if (match.matchStatus==='active'||match.matchStatus==='complete')
       return res.json({ success:true, code:match.code });
     if (!match.team1||!match.team2) return res.status(400).json({ error:'Faltan equipos' });
-    let code = t.codePool.shift()||null;
-    if (!code&&t.riotTournamentId) {
-      const newCodes = await generateCodes(t.riotTournamentId, 1);
-      code = newCodes[0]||null;
-    }
-    t.bracket[mi].code=code; t.bracket[mi].matchStatus=code?'active':'ready';
+    const code = await assignCodeToMatch(t, mi);
     await saveT(t);
     res.json({ success:true, code, matchId });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -635,33 +831,16 @@ router.post('/:id/matches/:matchId/result', requireAuth, async (req: any, res) =
     const match = t.bracket[mi];
     if (winner!==match.team1&&winner!==match.team2) return res.status(400).json({ error:'Ganador inválido' });
     if (match.matchStatus==='complete') return res.status(400).json({ error:'Partido ya completado' });
-    const loser = winner===match.team1?match.team2:match.team1;
-    t.bracket[mi] = {...match, winner, matchStatus:'complete',
-      score1:score1!==undefined?score1:match.score1,
-      score2:score2!==undefined?score2:match.score2};
-    // Advance winner
-    const nextId = `r${match.round+1}m${Math.ceil(match.matchNumber/2)}`;
-    const ni = t.bracket.findIndex(m=>m.id===nextId);
-    if (ni!==-1) {
-      if (match.matchNumber%2===1) t.bracket[ni].team1=winner; else t.bracket[ni].team2=winner;
-      if (t.bracket[ni].team1&&t.bracket[ni].team2) {
-        const code = t.codePool.shift()||null;
-        t.bracket[ni].code=code; t.bracket[ni].matchStatus=code?'active':'ready';
-      }
-    }
-    // Standings
-    if (t.standings) {
-      t.standings = t.standings
-        .map(s=>s.team===winner?{...s,wins:s.wins+1,points:s.points+3}:s.team===loser?{...s,losses:s.losses+1}:s)
-        .sort((a,b)=>b.points-a.points).map((s,i)=>({...s,position:i+1}));
-    }
-    // Check completion
-    const maxRound = Math.max(...t.bracket.map(m=>m.round));
-    if (t.bracket.find(m=>m.round===maxRound)?.matchStatus==='complete') t.phase='complete';
+
+    await applyResult(t, mi, winner, score1, score2);
     await saveT(t);
+
+    // applyResult may flip t.phase to 'complete'; cast past the earlier narrowing.
+    const isComplete = (t.phase as TournamentPhase) === 'complete';
+    const maxRound = Math.max(...t.bracket.map(m=>m.round));
     res.json({ success:true, bracket:t.bracket, standings:t.standings,
-      tournamentComplete:t.phase==='complete',
-      champion:t.phase==='complete'?t.bracket.find(m=>m.round===maxRound)?.winner:null });
+      tournamentComplete:isComplete,
+      champion:isComplete?t.bracket.find(m=>m.round===maxRound)?.winner:null });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
@@ -695,13 +874,14 @@ async function resolveGamePlatform(gameId: number): Promise<{ platform: string; 
 }
 
 // Link gameId directly — probes all platforms to find where the game lives
-router.post('/:id/matches/:matchId/link-gameid', async (req, res) => {
+router.post('/:id/matches/:matchId/link-gameid', requireAuth, async (req: any, res) => {
   const { id, matchId } = req.params;
   const { gameId } = req.body;
   if (!gameId) return res.status(400).json({ error: 'gameId requerido' });
   try {
     const t = await getT(id);
     if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!isOwner(req, t)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
     if (!t.bracket) return res.status(400).json({ error: 'Sin bracket' });
     const mi = t.bracket.findIndex(m => m.id === matchId);
     if (mi === -1) return res.status(404).json({ error: 'Partido no encontrado' });
@@ -717,7 +897,7 @@ router.post('/:id/matches/:matchId/link-gameid', async (req, res) => {
 });
 
 // Auto-detect gameId from captain's recent match history and link it
-router.post('/:id/matches/:matchId/auto-detect-game', async (req, res) => {
+router.post('/:id/matches/:matchId/auto-detect-game', requireAuth, async (req: any, res) => {
   const { id, matchId } = req.params;
   try {
     let t = await getT(id) ?? await (async () => {
@@ -725,6 +905,7 @@ router.post('/:id/matches/:matchId/auto-detect-game', async (req, res) => {
       return row ? rowToTournament(row) : null;
     })();
     if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!isOwner(req, t)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
     if (!t.bracket) return res.status(400).json({ error: 'Sin bracket' });
     const mi = t.bracket.findIndex(m => m.id === matchId);
     if (mi === -1) return res.status(404).json({ error: 'Partido no encontrado', available: t.bracket.map(m => m.id) });
@@ -771,8 +952,8 @@ router.post('/:id/matches/:matchId/auto-detect-game', async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// Assign code and/or gameId to match (no auth — for manual tournament ops)
-router.post('/:id/matches/:matchId/set-code', async (req, res) => {
+// Assign code and/or gameId to match (owner-only manual tournament ops)
+router.post('/:id/matches/:matchId/set-code', requireAuth, async (req: any, res) => {
   const { id, matchId } = req.params;
   const { code, gameId, region } = req.body;
   if (!code && !gameId) return res.status(400).json({ error: 'Se requiere code o gameId' });
@@ -782,6 +963,7 @@ router.post('/:id/matches/:matchId/set-code', async (req, res) => {
       return row ? rowToTournament(row) : null;
     })();
     if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!isOwner(req, t)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
     if (!t.bracket) return res.status(400).json({ error: 'Sin bracket' });
     const mi = t.bracket.findIndex(m => m.id === matchId);
     if (mi === -1) return res.status(404).json({ error: 'Partido no encontrado', available: t.bracket.map(m => m.id) });
@@ -799,8 +981,9 @@ router.post('/:id/matches/:matchId/set-code', async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// Try lobby events for a code directly (no auth — for testing)
-router.get('/debug-lobby/:code', async (req, res) => {
+// Try lobby events for a code directly (admin-only — hits Riot, no tournament scope)
+router.get('/debug-lobby/:code', requireAuth, async (req: any, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'Solo admin' });
   try {
     const events = await getLobbyEvents(req.params.code);
     res.json(events);
@@ -878,11 +1061,12 @@ router.get('/:id/matches/:matchId/stats', async (req, res) => {
 });
 
 // Detectar gameId desde el código de torneo del partido (llamada explícita)
-router.post('/:id/matches/:matchId/detect-from-code', async (req, res) => {
+router.post('/:id/matches/:matchId/detect-from-code', requireAuth, async (req: any, res) => {
   const { id, matchId } = req.params;
   try {
     const t = await getT(id);
     if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!isOwner(req, t)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
     if (!t.bracket) return res.status(400).json({ error: 'Sin bracket' });
     const mi = t.bracket.findIndex(m => m.id === matchId);
     if (mi === -1) return res.status(404).json({ error: 'Partido no encontrado' });
@@ -906,11 +1090,12 @@ router.post('/:id/matches/:matchId/detect-from-code', async (req, res) => {
 });
 
 // Sincronizar gameIds en todos los partidos con código pero sin gameId
-router.post('/:id/sync-games', async (req, res) => {
+router.post('/:id/sync-games', requireAuth, async (req: any, res) => {
   const { id } = req.params;
   try {
     const t = await getT(id);
     if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!isOwner(req, t)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
     if (!t.bracket) return res.json({ synced: 0, details: [] });
 
     const details: { matchId: string; code: string; gameId?: number; platform?: string; error?: string }[] = [];
@@ -1057,11 +1242,7 @@ router.post('/:id/generate-codes', requireAuth, async (req: any, res) => {
     const t = await getT(req.params.id);
     if (!t) return res.status(404).json({ error:'Torneo no encontrado' });
     if (!isOwner(req, t)) return res.status(403).json({ error:'Solo el creador puede hacer esto' });
-    let providerId = req.app.locals.riotProviderId;
-    if (!providerId) {
-      const p = await createProvider(); providerId = p.id;
-      req.app.locals.riotProviderId = providerId;
-    }
+    const providerId = await getOrCreateProviderId();
     let riotTournamentId = t.riotTournamentId;
     if (!riotTournamentId) {
       const rt = await createTournament(providerId, t.name);
@@ -1303,21 +1484,8 @@ async function buildLiveData(id: string) {
   };
 }
 
-// GET /debug-list — list all tournament IDs (for debugging)
-router.get('/debug-list', async (_req, res) => {
-  try {
-    const [rows] = await pool.query<any[]>(
-      'SELECT id, name, phase, riot_tournament_id, region FROM tournaments ORDER BY created_at DESC'
-    );
-    res.json(rows.map(r => ({
-      id: r.id, name: r.name, phase: r.phase,
-      riotTournamentId: r.riot_tournament_id, region: r.region,
-    })));
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
 // GET /:id/debug-live — returns raw resolution info for troubleshooting
-router.get('/:id/debug-live', async (req, res) => {
+router.get('/:id/debug-live', requireAuth, async (req: any, res) => {
   try {
     // Accept either internal slug OR riot_tournament_id
     let t = await getT(req.params.id);
@@ -1328,6 +1496,7 @@ router.get('/:id/debug-live', async (req, res) => {
       if (row) t = rowToTournament(row);
     }
     if (!t) return res.status(404).json({ error: 'Torneo no encontrado', hint: 'Llama a /api/tournaments/debug-list para ver los IDs disponibles' });
+    if (!isOwner(req, t)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
     const platform = t.region || 'la1';
     const regs = await getRegs(t.id);
     const activeMatches = (t.bracket || []).filter(

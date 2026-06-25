@@ -32,7 +32,7 @@ interface BracketMatch {
 function StatBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = Math.min(100, Math.round((value / Math.max(max, 1)) * 100));
   return (
-    <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+    <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
       <div className={`h-full rounded-full transition-all duration-700 ${color}`} style={{ width: `${pct}%` }} />
     </div>
   );
@@ -47,11 +47,11 @@ function PlayerRow({ p, isMvp, maxDmg }: { p: MatchParticipant; isMvp: boolean; 
     <div className={`flex items-center gap-3 py-2 px-3 rounded-lg transition ${isMvp ? 'bg-yellow-900/20 border border-yellow-600/30' : 'hover:bg-white/5'}`}>
       <div className="relative flex-shrink-0">
         {champImg ? (
-          <img src={champImg} alt={p.championName} className="w-10 h-10 rounded-lg border border-gray-700" />
+          <img src={champImg} alt={p.championName} className="w-10 h-10 rounded-lg border border-white/[0.08]" />
         ) : (
-          <div className="w-10 h-10 rounded-lg bg-gray-700 flex items-center justify-center text-xs">{p.championName[0]}</div>
+          <div className="w-10 h-10 rounded-lg bg-white/[0.05] flex items-center justify-center text-xs">{p.championName[0]}</div>
         )}
-        <span className="absolute -bottom-1 -right-1 text-xs bg-black/80 border border-gray-600 rounded px-1 leading-tight">{p.champLevel}</span>
+        <span className="absolute -bottom-1 -right-1 text-xs bg-black/80 border border-white/15 rounded px-1 leading-tight">{p.champLevel}</span>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
@@ -100,8 +100,8 @@ function StatsTable({ team, label, color, maxDmg }: {
   const avgKDA = (team.reduce((s, p) => s + p.kda, 0) / team.length).toFixed(2);
 
   return (
-    <div className={`rounded-xl border ${borderColor} bg-gray-900/50 overflow-hidden`}>
-      <div className={`px-4 py-2 bg-${color === 'blue' ? 'blue' : 'red'}-950/40 flex items-center justify-between`}>
+    <div className={`rounded-xl border ${borderColor} bg-white/[0.02] backdrop-blur-md overflow-hidden`}>
+      <div className={`px-4 py-2 ${color === 'blue' ? 'bg-blue-950/40' : 'bg-red-950/40'} flex items-center justify-between`}>
         <span className={`font-bold text-sm ${labelColor} flex items-center gap-2`}>
           <Swords className="h-4 w-4" />{label}
         </span>
@@ -111,7 +111,7 @@ function StatsTable({ team, label, color, maxDmg }: {
         </div>
       </div>
       {/* Column headers */}
-      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-gray-800 text-xs text-gray-500">
+      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-white/[0.06] text-xs text-gray-500">
         <div className="w-10 flex-shrink-0"></div>
         <div className="flex-1">Jugador</div>
         <div className="w-20 text-center">K/D/A</div>
@@ -119,7 +119,7 @@ function StatsTable({ team, label, color, maxDmg }: {
         <div className="w-24 hidden lg:block">Daño</div>
         <div className="w-12 text-center hidden md:block">Visión</div>
       </div>
-      <div className="divide-y divide-gray-800/50">
+      <div className="divide-y divide-white/[0.05]">
         {sorted.map((p, i) => (
           <PlayerRow key={i} p={p} isMvp={i === mvpIdx} maxDmg={maxDmg} />
         ))}
@@ -210,7 +210,7 @@ export function TournamentMatchStats({ tournamentId, match, isActive }: Tourname
       )}
 
       {!stats && !loading && match.matchStatus === 'active' && (
-        <div className="text-center py-6 text-gray-600 text-xs bg-gray-900/40 rounded-lg border border-gray-800">
+        <div className="text-center py-6 text-gray-600 text-xs bg-white/[0.03] rounded-xl border border-white/[0.08]">
           <Swords className="h-6 w-6 mx-auto mb-2 text-gray-700" />
           <p>Partida en curso. Las stats aparecerán automáticamente cuando termine.</p>
           {match.code && (
@@ -224,7 +224,7 @@ export function TournamentMatchStats({ tournamentId, match, isActive }: Tourname
       {stats && (
         <>
           {/* Game summary */}
-          <div className="flex items-center justify-center gap-6 py-3 bg-gray-900/60 rounded-lg border border-gray-800 text-sm">
+          <div className="flex items-center justify-center gap-6 py-3 bg-white/[0.03] rounded-xl border border-white/[0.08] text-sm">
             <div className={`font-bold text-lg ${stats.winner === 'blue' ? 'text-blue-300' : 'text-gray-500'}`}>
               {match.team1}
               {stats.winner === 'blue' && <Trophy className="h-4 w-4 inline ml-1 text-yellow-400" />}

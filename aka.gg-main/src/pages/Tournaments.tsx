@@ -344,6 +344,7 @@ export default function TournamentsPage() {
           tournamentName={selectedTournament.name}
           open={registerOpen}
           onOpenChange={setRegisterOpen}
+          onRegistered={fetchTournaments}
         />
       )}
       <TournamentCreateModal
