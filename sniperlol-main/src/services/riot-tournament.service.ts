@@ -83,6 +83,9 @@ export const generateCodes = async (
     spectatorType?: string;
     teamSize?: number;
     metadata?: string;
+    // Riot Tournament-V5: restricts the code to these PUUIDs (allowlist).
+    // Omit/empty → anyone with the code can join.
+    allowedParticipants?: string[];
   } = {}
 ): Promise<string[]> => {
   const {
@@ -91,12 +94,21 @@ export const generateCodes = async (
     spectatorType = 'ALL',
     teamSize = 5,
     metadata = '',
+    allowedParticipants,
   } = options;
+
+  const body: Record<string, any> = { teamSize, pickType, mapType, spectatorType, metadata };
+  // Only send the allowlist when we actually have enough participants; Riot
+  // rejects a code whose allowlist is shorter than teamSize*2.
+  if (allowedParticipants && allowedParticipants.length >= teamSize * 2) {
+    body.allowedParticipants = allowedParticipants;
+    body.enoughPlayers = true;
+  }
 
   try {
     const { data } = await riotAxios.post(
       `/lol/${API_PATH}/v5/codes?count=${count}&tournamentId=${tournamentId}`,
-      { teamSize, pickType, mapType, spectatorType, metadata }
+      body
     );
     const codes = Array.isArray(data) ? data : [];
     console.log(`[Codes] ${codes.length} código(s) generado(s) para torneo ${tournamentId}`);
