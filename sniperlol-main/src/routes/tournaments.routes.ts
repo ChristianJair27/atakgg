@@ -98,6 +98,15 @@ async function initTables() {
       INDEX idx_riot_match (riot_match_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  // Key/value settings — persists the Riot provider id across restarts so we
+  // don't register a brand-new provider (burning production quota) on every boot.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      k          VARCHAR(100) PRIMARY KEY,
+      v          TEXT,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   // New columns (idempotent)
   for (const col of [
     `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS region VARCHAR(10) DEFAULT 'la1'`,
@@ -137,6 +146,28 @@ initTables().catch(err => console.error('[tournaments] initTables error:', err.m
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
 function parseJson(v: any) { if (!v) return undefined; return typeof v === 'string' ? JSON.parse(v) : v; }
+
+// ─── App settings (key/value) ───────────────────────────────────────────────
+async function getSetting(key: string): Promise<string | null> {
+  const [[row]] = await pool.query<any[]>('SELECT v FROM app_settings WHERE k = ?', [key]);
+  return row ? row.v : null;
+}
+async function setSetting(key: string, value: string) {
+  await pool.query(
+    'INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)',
+    [key, value]
+  );
+}
+
+// Returns the persisted Riot provider id, creating (and storing) one only the
+// first time. Survives restarts, so we never spawn duplicate providers in Riot.
+async function getOrCreateProviderId(): Promise<number> {
+  const stored = await getSetting('riot_provider_id');
+  if (stored) return Number(stored);
+  const p = await createProvider();
+  await setSetting('riot_provider_id', String(p.id));
+  return p.id;
+}
 
 function rowToTournament(row: any): TournamentData {
   return {
@@ -416,11 +447,7 @@ router.post('/', requireAuth, async (req: any, res) => {
 
   if (createRiot) {
     try {
-      let providerId = req.app.locals.riotProviderId;
-      if (!providerId) {
-        const p = await createProvider(); providerId = p.id;
-        req.app.locals.riotProviderId = providerId;
-      }
+      const providerId = await getOrCreateProviderId();
       const rt = await createTournament(providerId, name);
       riotTournamentId = rt.id;
       initialCodes = await generateCodes(riotTournamentId, Math.min((maxParticipants||16)*2, 100));
@@ -472,6 +499,20 @@ router.post('/tournament-callback', async (req, res) => {
     } catch (err) { console.error('[Callback] error:', err); }
   }
   res.status(200).send('OK');
+});
+
+// GET /debug-list — list all tournament IDs (for debugging).
+// Declared BEFORE GET /:id so the literal path isn't captured as an :id param.
+router.get('/debug-list', async (_req, res) => {
+  try {
+    const [rows] = await pool.query<any[]>(
+      'SELECT id, name, phase, riot_tournament_id, region FROM tournaments ORDER BY created_at DESC'
+    );
+    res.json(rows.map(r => ({
+      id: r.id, name: r.name, phase: r.phase,
+      riotTournamentId: r.riot_tournament_id, region: r.region,
+    })));
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // GET by id
@@ -1057,11 +1098,7 @@ router.post('/:id/generate-codes', requireAuth, async (req: any, res) => {
     const t = await getT(req.params.id);
     if (!t) return res.status(404).json({ error:'Torneo no encontrado' });
     if (!isOwner(req, t)) return res.status(403).json({ error:'Solo el creador puede hacer esto' });
-    let providerId = req.app.locals.riotProviderId;
-    if (!providerId) {
-      const p = await createProvider(); providerId = p.id;
-      req.app.locals.riotProviderId = providerId;
-    }
+    const providerId = await getOrCreateProviderId();
     let riotTournamentId = t.riotTournamentId;
     if (!riotTournamentId) {
       const rt = await createTournament(providerId, t.name);
@@ -1302,19 +1339,6 @@ async function buildLiveData(id: string) {
     matches: results, timestamp: Date.now(),
   };
 }
-
-// GET /debug-list — list all tournament IDs (for debugging)
-router.get('/debug-list', async (_req, res) => {
-  try {
-    const [rows] = await pool.query<any[]>(
-      'SELECT id, name, phase, riot_tournament_id, region FROM tournaments ORDER BY created_at DESC'
-    );
-    res.json(rows.map(r => ({
-      id: r.id, name: r.name, phase: r.phase,
-      riotTournamentId: r.riot_tournament_id, region: r.region,
-    })));
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
 
 // GET /:id/debug-live — returns raw resolution info for troubleshooting
 router.get('/:id/debug-live', async (req, res) => {

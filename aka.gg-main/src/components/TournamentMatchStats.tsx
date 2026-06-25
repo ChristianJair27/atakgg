@@ -101,7 +101,7 @@ function StatsTable({ team, label, color, maxDmg }: {
 
   return (
     <div className={`rounded-xl border ${borderColor} bg-gray-900/50 overflow-hidden`}>
-      <div className={`px-4 py-2 bg-${color === 'blue' ? 'blue' : 'red'}-950/40 flex items-center justify-between`}>
+      <div className={`px-4 py-2 ${color === 'blue' ? 'bg-blue-950/40' : 'bg-red-950/40'} flex items-center justify-between`}>
         <span className={`font-bold text-sm ${labelColor} flex items-center gap-2`}>
           <Swords className="h-4 w-4" />{label}
         </span>

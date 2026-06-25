@@ -12,7 +12,9 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const FALLBACK_VER = '14.24.1';
-const API_BASE = (import.meta.env.VITE_API_URL as string) ?? 'http://192.168.1.80:4000';
+// Single source of truth for the API origin — mirror the axios client so the
+// SSE EventSource never diverges from the rest of the app's requests.
+const API_BASE = (axiosInstance.defaults.baseURL as string) || 'http://localhost:4000';
 
 const SPELL_KEYS: Record<number, string> = {
   1:'SummonerBoost', 3:'SummonerExhaust', 4:'SummonerFlash',
