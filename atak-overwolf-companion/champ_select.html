@@ -3,31 +3,57 @@
 <head>
 <meta charset="UTF-8">
 <title>ATAK — Champ Select</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{width:800px;height:590px;overflow:hidden;user-select:none}
 :root{
-  --gold:#c89b3c;--goldlt:#f0e6d3;--golddm:#785a28;
-  --teal:#0bc4e3;--red:#ef4444;--green:#22c55e;--purple:#a855f7;
-  --glass:rgba(255,255,255,.05);--glass-b:rgba(255,255,255,.09);
-  --blur:blur(26px) saturate(140%);--r:12px;
+  --gold:#c89b3c;--goldlt:#f0e6d3;--golddm:#9a7b3a;
+  --teal:#0bc4e3;--red:#f87171;--green:#34d399;--purple:#c4b5fd;
+  --ink:rgba(8,9,12,.55);
+  --r:16px;
+  --heading:'Instrument Serif',Georgia,serif;
+  --body:'Barlow',system-ui,sans-serif;
 }
 body{
-  font-family:'Segoe UI',system-ui,sans-serif;color:#fff;
+  font-family:var(--body);font-weight:400;color:#fff;
+  /* Translucent cinematic veil — game visible behind the panels */
   background:
-    radial-gradient(ellipse 70% 50% at 15% -10%,rgba(33,82,255,.16),transparent 55%),
-    radial-gradient(ellipse 60% 50% at 85% 110%,rgba(121,40,202,.12),transparent 55%),
-    radial-gradient(ellipse 100% 30% at 50% 0%,rgba(11,196,227,.06),transparent 40%),
-    linear-gradient(170deg,#010a13 0%,#060b1a 100%);
+    radial-gradient(ellipse 70% 45% at 50% -8%,rgba(255,255,255,.05),transparent 60%),
+    radial-gradient(ellipse 60% 45% at 85% 110%,rgba(200,155,60,.05),transparent 55%),
+    linear-gradient(175deg,rgba(2,3,6,.30) 0%,rgba(2,3,6,.42) 100%);
 }
-::-webkit-scrollbar{width:2px}
-::-webkit-scrollbar-thumb{background:rgba(200,155,60,.25);border-radius:2px}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px}
 
-.g{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-b);border-radius:var(--r);position:relative;overflow:hidden}
-.g::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent);pointer-events:none}
-.g.gold-top::before{background:linear-gradient(90deg,transparent,rgba(200,155,60,.5),transparent)}
-.g.teal-top::before{background:linear-gradient(90deg,transparent,rgba(11,196,227,.4),transparent)}
-.g.red-top::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.45),transparent)}
+/* ── Liquid glass ── */
+.g{
+  background:var(--ink);background-blend-mode:luminosity;
+  backdrop-filter:blur(16px) saturate(150%);-webkit-backdrop-filter:blur(16px) saturate(150%);
+  border-radius:var(--r);position:relative;overflow:hidden;
+  box-shadow:0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(255,255,255,.10);
+}
+/* Signature gradient-stroke border via masked ::before */
+.g::before{
+  content:'';position:absolute;inset:0;border-radius:inherit;padding:1.4px;
+  background:linear-gradient(180deg,
+    rgba(255,255,255,.45) 0%, rgba(255,255,255,.14) 20%,
+    rgba(255,255,255,0) 42%, rgba(255,255,255,0) 58%,
+    rgba(255,255,255,.14) 80%, rgba(255,255,255,.45) 100%);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;
+}
+.g.gold-top{box-shadow:0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(200,155,60,.18)}
+.g.teal-top{box-shadow:0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(11,196,227,.18)}
+.g.red-top{box-shadow:0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(248,113,113,.18)}
+
+/* ── Blur-in entrance ── */
+@keyframes blurIn{from{filter:blur(10px);opacity:0;transform:translateY(12px)}to{filter:blur(0);opacity:1;transform:translateY(0)}}
+#teams-panel{animation:blurIn .55s cubic-bezier(.2,.7,.2,1) both}
+#tab-bar{animation:blurIn .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:.08s}
+#content-area{animation:blurIn .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:.14s}
 
 #root{display:flex;flex-direction:column;height:100vh;gap:5px;padding:7px}
 
@@ -278,6 +304,20 @@ body{
 .tpill img{width:14px;height:14px;border-radius:3px;object-fit:cover}
 #counter-txt{font-size:7.5px;color:rgba(255,255,255,.28);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #counter-txt span{color:var(--teal);font-weight:600}
+
+/* ── Cinematic heading typography (Instrument Serif italic) ── */
+#brand-name{font-family:var(--heading);font-style:italic;font-weight:400;font-size:17px;letter-spacing:0;color:#fff}
+#brand-gem{font-family:var(--heading);font-style:italic;border-radius:6px;clip-path:none;background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.04));color:#fff}
+#timer-num{font-family:var(--heading);font-style:italic;font-weight:400;color:#fff;font-size:18px}
+#pick-champ-name,#ins-champ-name,#pl-name{font-family:var(--heading);font-style:italic;font-weight:400;letter-spacing:-.01em}
+#pick-champ-name{font-size:26px}
+#ins-champ-name{font-size:17px}
+#pl-name{font-size:18px}
+#pick-winrate,#ins-wr,#pl-mastery-lv{font-family:var(--heading);font-style:italic;font-weight:400}
+#pick-winrate{font-size:17px;color:var(--goldlt)}
+#ins-wr{font-size:22px;color:var(--goldlt)}
+#pl-mastery-lv{font-size:22px;color:var(--goldlt)}
+.rank-tier{font-family:var(--heading);font-style:italic;font-weight:400;font-size:14px}
 </style>
 </head>
 <body>
