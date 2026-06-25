@@ -1,9 +1,7 @@
-// src/components/TournamentBracket.tsx
+// src/components/TournamentBracket.tsx — glass redesign with connector lines
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Copy, Check, Trophy, Swords, Zap, BarChart2 } from 'lucide-react';
+import { Copy, Check, Trophy, Swords, Zap, BarChart2, X } from 'lucide-react';
 import { TournamentMatchStats } from '@/components/TournamentMatchStats';
 
 type MatchStatus = 'pending' | 'ready' | 'active' | 'complete';
@@ -25,11 +23,19 @@ interface TournamentBracketProps {
   reportingMatch: string | null;
 }
 
+// Layout constants — the connector math relies on a common row unit so each
+// next-round match lines up with the midpoint of its two feeder matches.
+const CARD_W = 208;   // px — match card width
+const STUB   = 22;    // px — horizontal connector stub on each side
+const COL_W  = CARD_W + STUB * 2;
+const ROW    = 128;   // px — vertical space allotted per first-round match
+const LINE   = 'rgba(255,255,255,0.14)';
+
 function CopyCode({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); };
   return (
-    <button onClick={copy} className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 transition mt-1 max-w-full" title="Copiar código">
+    <button onClick={copy} className="flex items-center gap-1.5 text-xs text-purple-300 hover:text-purple-200 transition w-full" title="Copiar código">
       {copied ? <Check className="h-3 w-3 text-green-400 flex-shrink-0" /> : <Copy className="h-3 w-3 flex-shrink-0" />}
       <span className="font-mono truncate">{code}</span>
     </button>
@@ -46,81 +52,77 @@ function getRoundLabel(round: number, maxRound: number): string {
 }
 
 function ReportForm({ match, onReport, loading }: {
-  match: BracketMatch;
-  onReport: (winner: string, s1: number, s2: number) => void;
-  loading: boolean;
+  match: BracketMatch; onReport: (winner: string, s1: number, s2: number) => void; loading: boolean;
 }) {
   const [score1, setScore1] = useState('');
   const [score2, setScore2] = useState('');
   const [winner, setWinner] = useState('');
   if (!match.team1 || !match.team2) return null;
+  const numCls = 'w-12 h-7 text-xs text-center px-1 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white outline-none focus:border-red-500/50';
   return (
-    <div className="mt-2 p-2 bg-black/40 rounded border border-gray-700 space-y-2">
-      <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Resultado</p>
-      <div className="flex gap-2 items-center">
-        <Input type="number" placeholder="0" value={score1} onChange={e => setScore1(e.target.value)}
-          className="w-14 h-7 text-xs bg-gray-800 border-gray-700 text-center px-1" min={0} />
+    <div className="mt-2 p-2.5 rounded-xl bg-black/40 border border-white/[0.08] space-y-2">
+      <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Resultado</p>
+      <div className="flex gap-2 items-center justify-center">
+        <input type="number" placeholder="0" value={score1} onChange={e => setScore1(e.target.value)} className={numCls} min={0} />
         <span className="text-gray-600 text-xs">vs</span>
-        <Input type="number" placeholder="0" value={score2} onChange={e => setScore2(e.target.value)}
-          className="w-14 h-7 text-xs bg-gray-800 border-gray-700 text-center px-1" min={0} />
+        <input type="number" placeholder="0" value={score2} onChange={e => setScore2(e.target.value)} className={numCls} min={0} />
       </div>
-      <div className="flex gap-1 flex-wrap">
+      <div className="grid grid-cols-1 gap-1">
         {[match.team1, match.team2].map(team => (
           <button key={team} onClick={() => setWinner(team!)}
-            className={`text-xs px-2 py-1 rounded border transition ${winner === team ? 'bg-green-700 border-green-500 text-white' : 'border-gray-700 text-gray-300 hover:border-green-600'}`}>
+            className={`text-xs px-2 py-1 rounded-lg border transition truncate ${
+              winner === team ? 'bg-green-600/80 border-green-500 text-white' : 'border-white/10 text-gray-300 hover:border-green-600/60'
+            }`}>
             {team} gana
           </button>
         ))}
       </div>
       <Button size="sm" onClick={() => onReport(winner, Number(score1) || 0, Number(score2) || 0)}
-        disabled={loading || !winner} className="bg-red-700 hover:bg-red-800 h-7 text-xs w-full">
+        disabled={loading || !winner} className="gradient-red border-0 h-7 text-xs w-full hover:opacity-90">
         {loading ? 'Guardando...' : 'Confirmar'}
       </Button>
     </div>
   );
 }
 
-function MatchCard({ match, isActive, isReporting, onActivate, onReport }: {
+function MatchCard({ match, isActive, isReporting, onActivate, onReport, onToggleStats, statsOpen }: {
   match: BracketMatch; isActive: boolean; isReporting: boolean;
   onActivate: () => Promise<string | null>;
   onReport: (winner: string, s1: number, s2: number) => void;
+  onToggleStats: () => void; statsOpen: boolean;
 }) {
   const [showReport, setShowReport] = useState(false);
   const [activating, setActivating] = useState(false);
 
-  const handleActivate = async () => {
-    setActivating(true);
-    await onActivate();
-    setActivating(false);
-  };
+  const handleActivate = async () => { setActivating(true); await onActivate(); setActivating(false); };
 
   const teamCls = (team: string | null) =>
-    `px-2 py-1.5 text-sm rounded flex items-center justify-between gap-1 ${
-      team === match.winner         ? 'bg-green-800/50 text-green-300 font-bold' :
-      !team || team === 'BYE'       ? 'bg-gray-800/20 text-gray-600 italic' :
-      match.winner                  ? 'bg-gray-800/30 text-gray-500 line-through' :
-                                      'bg-gray-800/50 text-gray-200'
+    `px-2.5 py-1.5 text-sm rounded-lg flex items-center justify-between gap-1 transition ${
+      team === match.winner   ? 'bg-green-500/15 text-green-300 font-bold border border-green-500/30' :
+      !team || team === 'BYE' ? 'bg-white/[0.02] text-gray-600 italic border border-transparent' :
+      match.winner            ? 'bg-white/[0.02] text-gray-500 line-through border border-transparent' :
+                                'bg-white/[0.05] text-gray-100 border border-white/[0.06]'
     }`;
 
   const isEmpty = !match.team1 && !match.team2;
+  const canShowStats = !!match.gameId || match.matchStatus === 'complete';
 
   return (
-    <div className={`border rounded-lg overflow-hidden w-52 transition ${
-      match.matchStatus === 'complete' ? 'border-green-800/50 bg-green-950/10' :
-      match.matchStatus === 'active'   ? 'border-purple-700/60 bg-purple-950/10' :
-      match.matchStatus === 'ready'    ? 'border-red-800/40 bg-gray-900/70' :
-                                         'border-gray-800/30 bg-gray-900/20 opacity-40'
-    }`}>
-      {/* Status indicator */}
+    <div className={`rounded-xl overflow-hidden backdrop-blur-md transition ${
+      match.matchStatus === 'complete' ? 'border border-green-500/25 bg-green-500/[0.04]' :
+      match.matchStatus === 'active'   ? 'border border-purple-500/40 bg-purple-500/[0.06] shadow-[0_0_18px_rgba(168,85,247,0.12)]' :
+      match.matchStatus === 'ready'    ? 'border border-white/[0.10] bg-white/[0.03]' :
+                                         'border border-white/[0.05] bg-white/[0.01] opacity-50'
+    }`} style={{ width: CARD_W }}>
       {!isEmpty && (
-        <div className={`px-2 py-0.5 text-xs font-semibold text-center ${
-          match.matchStatus === 'complete' ? 'bg-green-900/50 text-green-400' :
-          match.matchStatus === 'active'   ? 'bg-purple-900/50 text-purple-300' :
-          match.matchStatus === 'ready'    ? 'bg-gray-800 text-gray-400' :
-                                             'bg-gray-900 text-gray-600'
+        <div className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-center ${
+          match.matchStatus === 'complete' ? 'bg-green-500/10 text-green-400' :
+          match.matchStatus === 'active'   ? 'bg-purple-500/15 text-purple-300' :
+          match.matchStatus === 'ready'    ? 'bg-white/[0.04] text-gray-400' :
+                                             'bg-white/[0.02] text-gray-600'
         }`}>
-          {match.matchStatus === 'complete' ? '✓ Completado' :
-           match.matchStatus === 'active'   ? '● En curso' :
+          {match.matchStatus === 'complete' ? 'Completado' :
+           match.matchStatus === 'active'   ? 'En curso' :
            match.matchStatus === 'ready'    ? 'Por iniciar' : 'Esperando'}
         </div>
       )}
@@ -128,39 +130,39 @@ function MatchCard({ match, isActive, isReporting, onActivate, onReport }: {
       <div className="p-2 space-y-1">
         <div className={teamCls(match.team1)}>
           <span className="truncate">{match.team1 || 'Por definir'}</span>
-          {match.winner === match.team1 && <Trophy className="h-3 w-3 text-yellow-400 flex-shrink-0" />}
-          {match.score1 !== undefined && match.winner && <span className="text-xs opacity-60 flex-shrink-0">{match.score1}</span>}
+          <span className="flex items-center gap-1 flex-shrink-0">
+            {match.score1 !== undefined && match.winner && <span className="text-xs opacity-60">{match.score1}</span>}
+            {match.winner === match.team1 && <Trophy className="h-3 w-3 text-yellow-400" />}
+          </span>
         </div>
         <div className="flex items-center justify-center"><Swords className="h-3 w-3 text-gray-700" /></div>
         <div className={teamCls(match.team2)}>
           <span className="truncate">{match.team2 || 'Por definir'}</span>
-          {match.winner === match.team2 && <Trophy className="h-3 w-3 text-yellow-400 flex-shrink-0" />}
-          {match.score2 !== undefined && match.winner && <span className="text-xs opacity-60 flex-shrink-0">{match.score2}</span>}
+          <span className="flex items-center gap-1 flex-shrink-0">
+            {match.score2 !== undefined && match.winner && <span className="text-xs opacity-60">{match.score2}</span>}
+            {match.winner === match.team2 && <Trophy className="h-3 w-3 text-yellow-400" />}
+          </span>
         </div>
       </div>
 
-      {/* Code */}
       {match.code && (
-        <div className="px-2 pb-1 border-t border-gray-800/50">
+        <div className="px-2 pb-1.5 pt-0.5 border-t border-white/[0.06]">
           <CopyCode code={match.code} />
         </div>
       )}
 
-      {/* Actions */}
       {isActive && !isEmpty && match.matchStatus !== 'complete' && match.team1 !== 'BYE' && match.team2 !== 'BYE' && (
         <div className="px-2 pb-2 space-y-1">
-          {/* Activate (get code) */}
           {match.matchStatus === 'ready' && !match.code && (
             <Button size="sm" onClick={handleActivate} disabled={activating}
-              className="w-full h-7 text-xs bg-purple-700 hover:bg-purple-800">
+              className="w-full h-7 text-xs bg-purple-600 hover:bg-purple-500 border-0">
               {activating ? '...' : <><Zap className="h-3 w-3 mr-1" />Obtener código</>}
             </Button>
           )}
-          {/* Report result */}
           {(match.matchStatus === 'active' || match.matchStatus === 'ready') && (
             <>
               <button onClick={() => setShowReport(!showReport)}
-                className="text-xs text-red-400 hover:text-red-300 w-full text-center transition">
+                className="text-xs text-red-400 hover:text-red-300 w-full text-center transition py-0.5">
                 {showReport ? 'Cancelar' : '+ Reportar resultado'}
               </button>
               {showReport && (
@@ -171,7 +173,36 @@ function MatchCard({ match, isActive, isReporting, onActivate, onReport }: {
           )}
         </div>
       )}
+
+      {canShowStats && (
+        <button onClick={onToggleStats}
+          className={`w-full flex items-center justify-center gap-1.5 text-xs py-1.5 border-t border-white/[0.06] transition ${
+            statsOpen ? 'text-purple-200 bg-purple-500/10' : 'text-purple-300/80 hover:text-purple-200 hover:bg-purple-500/[0.06]'
+          }`}>
+          <BarChart2 className="h-3 w-3" />
+          {statsOpen ? 'Ocultar stats' : 'Ver stats'}
+        </button>
+      )}
     </div>
+  );
+}
+
+// Connector lines drawn at the right edge of a (non-final) match toward the
+// midpoint shared with its pair partner. vSpan is half the center-to-center
+// distance between paired matches, so the elbow lands on the next match center.
+function Connector({ matchIndex, vSpan }: { matchIndex: number; vSpan: number }) {
+  const isTop = matchIndex % 2 === 0;
+  return (
+    <>
+      {/* horizontal stub out of this match */}
+      <div className="absolute top-1/2 -translate-y-1/2 h-px" style={{ right: 0, width: STUB, background: LINE }} />
+      {/* vertical run toward the pair midpoint */}
+      <div className="absolute w-px" style={{ right: 0, height: vSpan, background: LINE, top: isTop ? '50%' : 'auto', bottom: isTop ? 'auto' : '50%' }} />
+      {/* horizontal stub from the midpoint into the next round (drawn once, by the top match) */}
+      {isTop && (
+        <div className="absolute h-px" style={{ right: -STUB, width: STUB, background: LINE, top: `calc(50% + ${vSpan}px)` }} />
+      )}
+    </>
   );
 }
 
@@ -181,74 +212,85 @@ export function TournamentBracket({
   const [expandedStats, setExpandedStats] = useState<string | null>(null);
   const rounds = Array.from({ length: maxRound }, (_, i) => i + 1);
   const champion = bracket.find(m => m.round === maxRound)?.winner;
+  const expandedMatch = bracket.find(m => m.id === expandedStats) ?? null;
+
+  // Body height drives the justify-around distribution and the connector math.
+  const firstRoundCount = bracket.filter(m => m.round === 1).length || 1;
+  const bodyHeight = Math.max(firstRoundCount * ROW, ROW);
 
   return (
-    <Card className="bg-gray-900/80 border-red-800/40">
-      <CardHeader>
-        <CardTitle className="text-2xl text-red-400 flex items-center gap-2">
-          <Trophy className="h-6 w-6" />
-          Bracket del Torneo
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto pb-4">
-          <div className="flex gap-6 min-w-max items-start">
+    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-md p-5">
+      <div className="flex items-center gap-2 mb-5">
+        <Trophy className="h-5 w-5 text-red-400" />
+        <h2 className="text-xl font-bold text-white">Bracket del torneo</h2>
+      </div>
+
+      <div className="overflow-x-auto pb-2">
+        <div className="min-w-max">
+          {/* Round headers */}
+          <div className="flex">
+            {rounds.map(round => (
+              <div key={round} className="text-center text-[11px] font-semibold text-gray-400 uppercase tracking-wider pb-3"
+                style={{ width: COL_W }}>
+                {getRoundLabel(round, maxRound)}
+              </div>
+            ))}
+            {champion && <div style={{ width: 168 }} className="text-center text-[11px] font-semibold text-yellow-500/70 uppercase tracking-wider pb-3">Campeón</div>}
+          </div>
+
+          {/* Bracket body — equal-height columns distribute matches evenly */}
+          <div className="flex" style={{ height: bodyHeight }}>
             {rounds.map(round => {
               const matchesInRound = bracket.filter(m => m.round === round);
+              const vSpan = bodyHeight / (2 * matchesInRound.length);
               return (
-                <div key={round} className="flex flex-col">
-                  <h3 className="text-xs font-semibold text-gray-400 text-center uppercase tracking-wider mb-3">
-                    {getRoundLabel(round, maxRound)}
-                  </h3>
-                  <div className="flex flex-col" style={{ gap: `${Math.pow(2, round - 1) * 12}px` }}>
-                    {matchesInRound.map(match => (
-                      <div key={match.id}>
-                        <MatchCard
-                          match={match}
-                          isActive={isActive}
-                          isReporting={reportingMatch === match.id}
-                          onActivate={() => onActivateMatch(match.id)}
-                          onReport={(w, s1, s2) => onReportResult(match.id, w, s1, s2)}
-                        />
-                        {/* Stats toggle — visible si hay gameId o partida completada */}
-                        {(match.gameId || match.matchStatus === 'complete') && (
-                          <button
-                            onClick={() => setExpandedStats(expandedStats === match.id ? null : match.id)}
-                            className="mt-1 w-52 flex items-center justify-center gap-1 text-xs text-purple-400 hover:text-purple-300 transition py-1 border border-purple-800/30 rounded-lg bg-purple-950/20 hover:bg-purple-950/40"
-                          >
-                            <BarChart2 className="h-3 w-3" />
-                            {expandedStats === match.id ? 'Ocultar stats' : 'Ver stats'}
-                          </button>
-                        )}
-                        {expandedStats === match.id && (
-                          <div className="mt-2 w-[600px] max-w-[90vw]">
-                            <TournamentMatchStats
-                              tournamentId={tournamentId}
-                              match={match}
-                              isActive={isActive}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                <div key={round} className="flex flex-col justify-around" style={{ width: COL_W }}>
+                  {matchesInRound.map((match, mi) => (
+                    <div key={match.id} className="relative flex items-center justify-center" style={{ width: COL_W }}>
+                      <MatchCard
+                        match={match} isActive={isActive}
+                        isReporting={reportingMatch === match.id}
+                        onActivate={() => onActivateMatch(match.id)}
+                        onReport={(w, s1, s2) => onReportResult(match.id, w, s1, s2)}
+                        statsOpen={expandedStats === match.id}
+                        onToggleStats={() => setExpandedStats(expandedStats === match.id ? null : match.id)}
+                      />
+                      {round < maxRound && <Connector matchIndex={mi} vSpan={vSpan} />}
+                    </div>
+                  ))}
                 </div>
               );
             })}
 
             {/* Champion */}
             {champion && (
-              <div className="flex flex-col items-center justify-start pt-8 px-3">
-                <div className="p-4 bg-gradient-to-b from-yellow-600/30 to-yellow-900/20 border border-yellow-600/50 rounded-xl text-center">
-                  <Trophy className="h-10 w-10 text-yellow-400 mx-auto mb-2" />
-                  <p className="text-xs text-yellow-400/70 uppercase tracking-wider">Campeón</p>
-                  <p className="text-xl font-bold text-yellow-300 mt-1">{champion}</p>
+              <div className="flex flex-col justify-center" style={{ width: 168 }}>
+                <div className="p-4 rounded-2xl text-center border border-yellow-500/40 bg-gradient-to-b from-yellow-500/15 to-yellow-900/10 shadow-[0_0_24px_rgba(234,179,8,0.15)]">
+                  <Trophy className="h-9 w-9 text-yellow-400 mx-auto mb-2" />
+                  <p className="text-[10px] text-yellow-400/70 uppercase tracking-wider">Campeón</p>
+                  <p className="text-lg font-bold text-yellow-300 mt-1 break-words">{champion}</p>
                 </div>
               </div>
             )}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Expanded stats — full width below the bracket so the grid stays aligned */}
+      {expandedMatch && (
+        <div className="mt-5 rounded-2xl border border-white/[0.08] bg-black/30 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-sm font-semibold text-white">
+              {expandedMatch.team1} <span className="text-gray-600">vs</span> {expandedMatch.team2}
+            </p>
+            <button onClick={() => setExpandedStats(null)}
+              className="p-1 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.08] transition">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <TournamentMatchStats tournamentId={tournamentId} match={expandedMatch} isActive={isActive} />
+        </div>
+      )}
+    </div>
   );
 }
