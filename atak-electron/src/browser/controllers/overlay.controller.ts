@@ -1,5 +1,5 @@
 import path from 'path';
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow, screen } from 'electron';
 import {
   OverlayBrowserWindow,
   OverlayWindowOptions,
@@ -12,8 +12,11 @@ import { LiveClientService, GameState } from '../services/live-client.service';
 const LOL_GAME_IDS = [5426, 22848, 21570];
 
 export class OverlayController {
-  private overlayWindow: OverlayBrowserWindow = null;
+  private overlayWindow: OverlayBrowserWindow = null;   // OSR-injected window (when Overwolf overlay package is available)
+  private fallbackWindow: BrowserWindow = null;         // plain always-on-top window (works without OSR / Overwolf approval)
   private isVisible = true;
+  private lastDataTs = 0;
+  private inactivityTimer: NodeJS.Timeout = null;
 
   constructor(
     private readonly overlayService: OverlayService,
@@ -26,13 +29,28 @@ export class OverlayController {
       this.checkForAlreadyRunningGame();
     });
 
+    // Poll the Live Client API (port 2999) unconditionally. It errors silently
+    // out of game and only emits 'state-update' while a match is running — this
+    // is what drives the plain-window fallback when OSR injection is unavailable
+    // (e.g. the Overwolf overlay package is still pending app approval).
+    this.liveClientService.startPolling();
+
     liveClientService.on('state-update', (state: GameState) => {
+      this.lastDataTs = Date.now();
+      this.ensureWindow();
       this.sendToOverlay('live-data', state);
     });
 
     liveClientService.on('game-ended', () => {
       this.sendToOverlay('game-ended', null);
     });
+
+    // Hide the fallback window a few seconds after the live data stops flowing.
+    this.inactivityTimer = setInterval(() => {
+      if (this.fallbackWindow && this.lastDataTs && Date.now() - this.lastDataTs > 12000) {
+        if (!this.fallbackWindow.isDestroyed()) this.fallbackWindow.hide();
+      }
+    }, 4000);
   }
 
   private registerOverlayEvents() {
@@ -76,15 +94,58 @@ export class OverlayController {
       console.log('[ATAK] game already running at startup:', activeGame.gameInfo?.id, '| supported:', isSupported);
 
       if (isSupported) {
-        // Game is running but wasn't injected (app started after game)
-        // Start polling Live Client API — overlay will appear as regular window
         this.liveClientService.startPolling();
-        // Still try to create the overlay window (it may appear as regular window)
         await this.createAndShow();
       }
     } catch (e) {
       console.log('[ATAK] no active game at startup');
     }
+  }
+
+  // Ensure SOME overlay window exists. Prefer the OSR window; if it isn't
+  // available (no Overwolf overlay package), fall back to a plain window.
+  private ensureWindow() {
+    if (this.overlayWindow?.window && !this.overlayWindow.window.isDestroyed()) return;
+    this.ensureFallbackWindow();
+  }
+
+  private ensureFallbackWindow() {
+    if (this.fallbackWindow && !this.fallbackWindow.isDestroyed()) {
+      if (!this.fallbackWindow.isVisible()) this.fallbackWindow.show();
+      return;
+    }
+
+    const { width } = screen.getPrimaryDisplay().workAreaSize;
+    this.fallbackWindow = new BrowserWindow({
+      width: 300,
+      height: 470,
+      x: width - 320,
+      y: 20,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      skipTaskbar: true,
+      focusable: false,
+      alwaysOnTop: true,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        devTools: false,
+      },
+    });
+    // 'screen-saver' level is the most reliable for floating over a
+    // borderless-windowed game on Windows.
+    this.fallbackWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    this.fallbackWindow.setVisibleOnAllWorkspaces(true);
+
+    const overlayHtmlPath = path.join(__dirname, '../renderer/overlay.html');
+    this.fallbackWindow.loadFile(overlayHtmlPath);
+
+    this.fallbackWindow.webContents.ipc.on('toggle-overlay', () => this.toggleVisibility());
+    this.fallbackWindow.on('closed', () => { this.fallbackWindow = null; });
+
+    this.isVisible = true;
+    console.log('[ATAK] plain fallback overlay window created (OSR unavailable)');
   }
 
   public async createAndShow() {
@@ -128,25 +189,24 @@ export class OverlayController {
         this.overlayWindow = null;
       });
 
-      // Use loadFile for reliable local file loading on Windows
       const overlayHtmlPath = path.join(__dirname, '../renderer/overlay.html');
       await this.overlayWindow.window.loadFile(overlayHtmlPath);
 
       this.isVisible = true;
       console.log('[ATAK] overlay window created at', options.x, options.y);
     } catch (e) {
-      console.error('[ATAK] failed to create overlay window:', e);
+      console.error('[ATAK] OSR overlay unavailable, using plain fallback:', (e as Error)?.message);
       this.overlayWindow = null;
+      this.ensureFallbackWindow();
     }
   }
 
   private toggleVisibility() {
-    if (!this.overlayWindow?.window || this.overlayWindow.window.isDestroyed()) return;
-    if (this.isVisible) {
-      this.overlayWindow.window.hide();
-    } else {
-      this.overlayWindow.window.show();
-    }
+    const win = (this.overlayWindow?.window && !this.overlayWindow.window.isDestroyed())
+      ? this.overlayWindow.window
+      : (this.fallbackWindow && !this.fallbackWindow.isDestroyed() ? this.fallbackWindow : null);
+    if (!win) return;
+    if (this.isVisible) win.hide(); else win.show();
     this.isVisible = !this.isVisible;
   }
 
@@ -154,6 +214,9 @@ export class OverlayController {
     try {
       if (this.overlayWindow?.window && !this.overlayWindow.window.isDestroyed()) {
         this.overlayWindow.window.webContents.send(channel, data);
+      }
+      if (this.fallbackWindow && !this.fallbackWindow.isDestroyed()) {
+        this.fallbackWindow.webContents.send(channel, data);
       }
     } catch {}
   }
