@@ -57,6 +57,36 @@ const champIcon = (name: string) => {
 const itemIcon = (id: number) =>
   `https://ddragon.leagueoflegends.com/cdn/14.24.1/img/item/${id}.png`
 
+// Katarina-style dagger — ATAK brand mark.
+const Dagger = ({ style }: { style?: React.CSSProperties }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" style={style} aria-hidden="true">
+    <path d="M12 1.2l1.85 12.4-1.85 2.5-1.85-2.5L12 1.2z" />
+    <path d="M7.3 14.0h9.4v1.6H7.3z" />
+    <path d="M11.05 15.8h1.9v4.9l-.95 1.1-.95-1.1z" />
+  </svg>
+)
+
+// Loading screen — dancing Katarina + orbiting daggers (dev-portal vibe).
+// Swap KATA_SRC for a dancing-Katarina .gif when available.
+const KATA_SRC = 'https://ddragon.leagueoflegends.com/cdn/img/champion/loading/Katarina_0.jpg'
+function Loader({ hidden }: { hidden: boolean }) {
+  return (
+    <div id="akl" className={hidden ? 'hide' : ''}>
+      <div className="akl-stage">
+        <img className="akl-kata" src={KATA_SRC} alt="" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+        <div className="akl-ring">
+          <div className="akl-d d1"><Dagger /></div>
+          <div className="akl-d d2"><Dagger /></div>
+          <div className="akl-d d3"><Dagger /></div>
+        </div>
+      </div>
+      <div className="akl-word"><Dagger />atak</div>
+      <div className="akl-sub">AI Companion</div>
+      <div className="akl-bar"><i /></div>
+    </div>
+  )
+}
+
 // ─── PlayerRow ────────────────────────────────────────────────────────────────
 
 function PlayerRow({ p, isMe }: { p: GamePlayer; isMe: boolean }) {
@@ -168,6 +198,14 @@ export default function App() {
   const [lastPlayerName,  setLastPlayerName]  = useState<string | null>(null)
   const [champImgErr,     setChampImgErr]     = useState(false)
   const [regionOpen,      setRegionOpen]      = useState(false)
+  const [loaderHidden,    setLoaderHidden]    = useState(false)
+  const [showLoader,      setShowLoader]      = useState(true)
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setLoaderHidden(true), 1900)
+    const t2 = setTimeout(() => setShowLoader(false), 2600)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [])
 
   const webviewRef         = useRef<any>(null)
   const lastPlayerNameRef  = useRef<string | null>(null)
@@ -248,16 +286,17 @@ export default function App() {
   return (
     <div style={ROOT_STYLE}>
       <style>{CSS}</style>
+      {showLoader && <Loader hidden={loaderHidden} />}
 
       {/* ═══ HEADER ═══════════════════════════════════════════════════════════ */}
       <header className="drag-region" style={HEADER_STYLE}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Concentric circles logo — matches the web app */}
-          <div style={{ width: 20, height: 20, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <div style={{ width: 9, height: 9, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.4)' }} />
+          {/* Katarina dagger brand mark */}
+          <div style={{ width: 22, height: 22, borderRadius: 7, background: 'linear-gradient(135deg, rgba(226,59,78,.18), rgba(226,59,78,.04))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Dagger style={{ width: 13, height: 13, color: '#e23b4e' }} />
           </div>
-          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.25em', color: '#fff' }}>ATAK</span>
-          <span style={{ fontSize: 7, fontWeight: 500, letterSpacing: '0.3em', color: 'rgba(255,255,255,0.22)' }}>COMPANION</span>
+          <span className="serif-i" style={{ fontSize: 21, color: '#fff', lineHeight: 1 }}>atak</span>
+          <span style={{ fontSize: 7, fontWeight: 500, letterSpacing: '0.3em', color: 'rgba(255,255,255,0.25)' }}>COMPANION</span>
         </div>
 
         <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -308,7 +347,7 @@ export default function App() {
             {/* Time + gold bar */}
             <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.45)' }}>
               <div>
-                <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: 26, letterSpacing: '-1.5px', color: '#fff', lineHeight: 1 }}>
+                <div className="serif-i" style={{ fontSize: 30, letterSpacing: '-0.5px', color: '#fff', lineHeight: 1 }}>
                   {fmtTime(gameTime)}
                 </div>
                 <div style={{ fontSize: 7, letterSpacing: '0.35em', color: 'rgba(255,255,255,0.2)', marginTop: 3, textTransform: 'uppercase' }}>
@@ -317,7 +356,7 @@ export default function App() {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 3, justifyContent: 'flex-end' }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'monospace', color: '#fbbf24' }}>{gold.toLocaleString()}</span>
+                  <span className="serif-i" style={{ fontSize: 20, color: '#fbbf24' }}>{gold.toLocaleString()}</span>
                   <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>g</span>
                 </div>
                 <div style={{ fontSize: 7, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase' }}>Gold</div>
@@ -344,11 +383,11 @@ export default function App() {
               {/* KDA */}
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 3, fontWeight: 500 }}>{myChamp}</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, fontFamily: 'monospace', fontWeight: 800, fontSize: 15 }}>
+                <div className="serif-i" style={{ display: 'flex', alignItems: 'baseline', gap: 3, fontSize: 20 }}>
                   <span style={{ color: '#4ade80' }}>{kills}</span>
-                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>/</span>
+                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 14 }}>/</span>
                   <span style={{ color: '#f87171' }}>{deaths}</span>
-                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>/</span>
+                  <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 14 }}>/</span>
                   <span style={{ color: '#93c5fd' }}>{assists}</span>
                 </div>
               </div>
@@ -376,11 +415,11 @@ export default function App() {
             )}
 
             {/* AI Coach */}
-            <div style={{ flexShrink: 0, margin: '7px 10px', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, background: 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="lg" style={{ flexShrink: 0, margin: '7px 10px', borderRadius: 12, background: 'rgba(8,9,12,0.55)', backdropFilter: 'blur(16px) saturate(150%)', WebkitBackdropFilter: 'blur(16px) saturate(150%)', boxShadow: '0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(255,255,255,.10)', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.5)' }} />
-                  <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.35em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>ATAK AI</span>
+                  <Dagger style={{ width: 11, height: 11, color: '#e23b4e' }} />
+                  <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.35em', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase' }}>ATAK AI</span>
                 </div>
                 <button onClick={requestAdvice} disabled={loadingAI} className="no-drag"
                   style={{ fontSize: 8, fontWeight: 600, letterSpacing: '0.15em', padding: '2px 8px', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.45)', background: 'transparent', cursor: loadingAI ? 'default' : 'pointer', opacity: loadingAI ? 0.4 : 1, borderRadius: 4, transition: 'all 0.15s' }}
@@ -502,10 +541,13 @@ export default function App() {
 
 const ROOT_STYLE: React.CSSProperties = {
   width: '100%', height: '100vh',
-  background: '#050505', color: '#f1f5f9',
+  // Frosted veil — the transparent Electron window shows the game faintly behind.
+  background: 'linear-gradient(180deg, rgba(6,7,10,0.86), rgba(4,5,8,0.9))',
+  backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
+  color: '#f1f5f9',
   display: 'flex', flexDirection: 'column',
   overflow: 'hidden',
-  fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+  fontFamily: "'Barlow', system-ui, -apple-system, sans-serif",
   userSelect: 'none',
 }
 
@@ -536,4 +578,47 @@ const CSS = `
     50%       { box-shadow: 0 0 0 5px rgba(239,68,68,0); }
   }
   .live-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
+
+  /* ── Liquid glass card ── */
+  .lg { position: relative; overflow: hidden; }
+  .lg::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.4px;
+    background: linear-gradient(180deg,
+      rgba(255,255,255,.45) 0%, rgba(255,255,255,.14) 20%,
+      rgba(255,255,255,0) 42%, rgba(255,255,255,0) 58%,
+      rgba(255,255,255,.14) 80%, rgba(255,255,255,.45) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+  }
+  .serif-i { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; }
+
+  /* ── Katarina loading screen ── */
+  #akl { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: radial-gradient(ellipse 75% 60% at 50% 42%, rgba(40,8,14,.6), transparent 70%),
+      linear-gradient(180deg, rgba(2,3,6,.86), rgba(2,3,6,.95));
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    opacity: 1; transition: opacity .6s ease; }
+  #akl.hide { opacity: 0; pointer-events: none; }
+  .akl-stage { position: relative; width: 132px; height: 132px; display: flex; align-items: center; justify-content: center; }
+  .akl-kata { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; object-position: top center;
+    border: 1.5px solid rgba(226,59,78,.5); box-shadow: 0 0 34px rgba(200,30,50,.32), inset 0 0 22px rgba(0,0,0,.45);
+    animation: aklDance 1.9s ease-in-out infinite; }
+  @keyframes aklDance { 0%,100%{transform:translateY(0) rotate(-3.5deg)} 25%{transform:translateY(-5px) rotate(2.5deg)}
+    50%{transform:translateY(0) rotate(3.5deg)} 75%{transform:translateY(-5px) rotate(-2.5deg)} }
+  .akl-ring { position: absolute; inset: 0; animation: aklSpin 3.4s linear infinite; }
+  @keyframes aklSpin { to { transform: rotate(360deg); } }
+  .akl-d { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+  .akl-d svg { position: absolute; left: -8px; top: -73px; width: 16px; height: 16px; color: #e23b4e;
+    filter: drop-shadow(0 0 5px rgba(226,59,78,.7)); }
+  .akl-d.d2 { transform: rotate(120deg); } .akl-d.d3 { transform: rotate(240deg); }
+  .akl-word { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 36px; color: #fff;
+    display: flex; align-items: center; gap: 9px; line-height: 1; }
+  .akl-word svg { width: 24px; height: 24px; color: #e23b4e; filter: drop-shadow(0 0 6px rgba(226,59,78,.55)); }
+  .akl-sub { font-family: 'Barlow', sans-serif; font-weight: 300; font-size: 9.5px; letter-spacing: .42em;
+    text-transform: uppercase; color: rgba(255,255,255,.42); margin-top: -6px; }
+  .akl-bar { width: 132px; height: 2px; border-radius: 2px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 4px; }
+  .akl-bar i { display: block; height: 100%; width: 38%; border-radius: 2px;
+    background: linear-gradient(90deg, transparent, #e23b4e, transparent); animation: aklSweep 1.25s ease-in-out infinite; }
+  @keyframes aklSweep { 0%{transform:translateX(-110%)} 100%{transform:translateX(330%)} }
 `
