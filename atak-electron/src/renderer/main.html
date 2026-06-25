@@ -3,93 +3,89 @@
 <head>
   <meta charset="UTF-8" />
   <title>ATAK.GG Companion</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --red: #e23b4e;
+      --heading: 'Instrument Serif', Georgia, serif;
+      --body: 'Barlow', system-ui, sans-serif;
+    }
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #050505;
-      color: #f1f1f1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
+      font-family: var(--body); color: #f1f1f1; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      background:
+        radial-gradient(ellipse 70% 55% at 50% 30%, rgba(40,8,14,.55), transparent 70%),
+        linear-gradient(180deg, #07070a 0%, #030305 100%);
+      overflow: hidden;
     }
-    .container {
-      text-align: center;
-      max-width: 480px;
-      padding: 40px;
-    }
-    .logo {
-      font-size: 48px;
-      font-weight: 900;
-      letter-spacing: -2px;
-      color: #dc2626;
-      margin-bottom: 8px;
-    }
-    .tagline {
-      font-size: 14px;
-      color: #555;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      margin-bottom: 40px;
-    }
-    .status-card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 24px;
-    }
-    .status-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 0;
-      font-size: 13px;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-    }
+
+    .container { text-align: center; max-width: 440px; padding: 36px; position: relative; z-index: 2; }
+
+    /* ── Katarina stage ── */
+    .stage { position: relative; width: 132px; height: 132px; margin: 0 auto 18px; display: flex; align-items: center; justify-content: center; }
+    .kata { width: 102px; height: 102px; border-radius: 50%; object-fit: cover; object-position: top center;
+      border: 1.5px solid rgba(226,59,78,.5); box-shadow: 0 0 36px rgba(200,30,50,.34), inset 0 0 22px rgba(0,0,0,.45);
+      animation: dance 1.9s ease-in-out infinite; }
+    @keyframes dance { 0%,100%{transform:translateY(0) rotate(-3.5deg)} 25%{transform:translateY(-5px) rotate(2.5deg)}
+      50%{transform:translateY(0) rotate(3.5deg)} 75%{transform:translateY(-5px) rotate(-2.5deg)} }
+    .ring { position: absolute; inset: 0; animation: spin 3.4s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dagger-orbit { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+    .dagger-orbit svg { position: absolute; left: -8px; top: -74px; width: 16px; height: 16px; color: var(--red); filter: drop-shadow(0 0 5px rgba(226,59,78,.7)); }
+    .dagger-orbit.d2 { transform: rotate(120deg); } .dagger-orbit.d3 { transform: rotate(240deg); }
+
+    /* ── Wordmark ── */
+    .logo { font-family: var(--heading); font-style: italic; font-size: 52px; color: #fff; line-height: 1;
+      display: flex; align-items: center; justify-content: center; gap: 12px; }
+    .logo svg { width: 32px; height: 32px; color: var(--red); filter: drop-shadow(0 0 8px rgba(226,59,78,.5)); }
+    .tagline { font-size: 11px; color: rgba(255,255,255,.4); letter-spacing: .42em; text-transform: uppercase; margin: 8px 0 34px; }
+
+    /* ── Status card (liquid glass) ── */
+    .status-card { position: relative; background: rgba(255,255,255,0.03); backdrop-filter: blur(16px);
+      border-radius: 16px; padding: 22px 24px; margin-bottom: 22px; overflow: hidden;
+      box-shadow: inset 0 1px 1px rgba(255,255,255,0.08), 0 8px 28px rgba(0,0,0,.4); }
+    .status-card::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.4px;
+      background: linear-gradient(180deg, rgba(255,255,255,.4), rgba(255,255,255,0) 45%, rgba(255,255,255,0) 55%, rgba(255,255,255,.4));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+    .status-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .status-row:last-child { border-bottom: none; }
-    .status-label { color: #666; }
+    .status-label { color: rgba(255,255,255,.45); }
     .status-val { font-weight: 600; }
-    .status-val.ok { color: #22c55e; }
-    .status-val.waiting { color: #f59e0b; }
-    .open-btn {
-      display: inline-block;
-      padding: 12px 28px;
-      background: #dc2626;
-      color: white;
-      font-weight: 700;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      border-radius: 8px;
-      text-decoration: none;
-      cursor: pointer;
-      border: none;
-      transition: background 0.2s;
-    }
-    .open-btn:hover { background: #ef4444; }
-    .hint {
-      margin-top: 20px;
-      font-size: 11px;
-      color: #333;
-      line-height: 1.8;
-    }
-    .overlay-hint {
-      margin-top: 12px;
-      padding: 12px 16px;
-      background: rgba(220,38,38,0.06);
-      border: 1px solid rgba(220,38,38,0.15);
-      border-radius: 8px;
-      font-size: 11px;
-      color: #888;
-      line-height: 1.7;
-    }
+    .status-val.ok { color: #34d399; }
+    .status-val.waiting { color: #fcd34d; }
+
+    .open-btn { display: inline-block; padding: 12px 30px; color: #fff; font-weight: 700; font-size: 12px;
+      text-transform: uppercase; letter-spacing: 1px; border-radius: 10px; text-decoration: none; cursor: pointer; border: none;
+      background: linear-gradient(135deg, #e23b4e, #b91c1c); box-shadow: 0 0 28px rgba(226,59,78,.35), 0 4px 16px rgba(0,0,0,.4);
+      transition: transform .2s, box-shadow .2s; }
+    .open-btn:hover { transform: translateY(-2px); box-shadow: 0 0 40px rgba(226,59,78,.5), 0 8px 24px rgba(0,0,0,.5); }
+
+    .overlay-hint { margin-top: 20px; padding: 12px 16px; background: rgba(226,59,78,0.06); border: 1px solid rgba(226,59,78,0.15);
+      border-radius: 10px; font-size: 11px; font-weight: 300; color: rgba(255,255,255,.5); line-height: 1.7; }
+    .hint { margin-top: 18px; font-size: 10.5px; font-weight: 300; color: rgba(255,255,255,.25); line-height: 1.8; letter-spacing: .02em; }
+    .hotkey-key { display: inline-block; padding: 1px 6px; border: 1px solid rgba(255,255,255,0.18); border-radius: 4px; font-size: 10px; color: #fff; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="logo">ATAK.GG</div>
+    <!-- Dancing Katarina -->
+    <div class="stage">
+      <img class="kata" src="https://ddragon.leagueoflegends.com/cdn/img/champion/loading/Katarina_0.jpg" alt="" onerror="this.style.display='none'" />
+      <div class="ring">
+        <div class="dagger-orbit d1"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.2l1.85 12.4-1.85 2.5-1.85-2.5L12 1.2z"/><path d="M7.3 14.0h9.4v1.6H7.3z"/><path d="M11.05 15.8h1.9v4.9l-.95 1.1-.95-1.1z"/></svg></div>
+        <div class="dagger-orbit d2"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.2l1.85 12.4-1.85 2.5-1.85-2.5L12 1.2z"/><path d="M7.3 14.0h9.4v1.6H7.3z"/><path d="M11.05 15.8h1.9v4.9l-.95 1.1-.95-1.1z"/></svg></div>
+        <div class="dagger-orbit d3"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.2l1.85 12.4-1.85 2.5-1.85-2.5L12 1.2z"/><path d="M7.3 14.0h9.4v1.6H7.3z"/><path d="M11.05 15.8h1.9v4.9l-.95 1.1-.95-1.1z"/></svg></div>
+      </div>
+    </div>
+
+    <!-- Wordmark -->
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.2l1.85 12.4-1.85 2.5-1.85-2.5L12 1.2z"/><path d="M7.3 14.0h9.4v1.6H7.3z"/><path d="M11.05 15.8h1.9v4.9l-.95 1.1-.95-1.1z"/></svg>
+      atak
+    </div>
     <div class="tagline">In-Game Companion</div>
 
     <div class="status-card">
@@ -99,21 +95,19 @@
       </div>
       <div class="status-row">
         <span class="status-label">Overlay Engine</span>
-        <span class="status-val ok" id="overlayStatus">Cargando...</span>
+        <span class="status-val ok" id="overlayStatus">Cargando…</span>
       </div>
       <div class="status-row">
         <span class="status-label">League of Legends</span>
-        <span class="status-val waiting" id="gameStatus">Esperando...</span>
+        <span class="status-val waiting" id="gameStatus">Esperando…</span>
       </div>
     </div>
 
-    <a class="open-btn" href="https://atak.gg" target="_blank">
-      Abrir ATAK.GG
-    </a>
+    <a class="open-btn" href="https://atak.gg" target="_blank">Abrir ATAK.GG</a>
 
     <div class="overlay-hint">
-      🎮 Inicia League of Legends y el HUD de ATAK.GG aparecerá automáticamente sobre el juego.<br/>
-      Usa <strong>F8</strong> para mostrar/ocultar el overlay.
+      🗡️ Inicia League of Legends y el HUD de ATAK.GG aparecerá automáticamente sobre el juego.<br/>
+      Usa <span class="hotkey-key">F8</span> para mostrar/ocultar el overlay.
     </div>
 
     <div class="hint">
@@ -127,7 +121,7 @@
       window.atakCompanion.getStatus().then(status => {
         const el = document.getElementById('overlayStatus');
         if (el) {
-          el.textContent = status.overlayReady ? '✓ Listo' : 'Cargando...';
+          el.textContent = status.overlayReady ? '✓ Listo' : 'Cargando…';
           el.className = 'status-val ' + (status.overlayReady ? 'ok' : 'waiting');
         }
       });
@@ -143,7 +137,7 @@
       window.atakCompanion.onGameExit(() => {
         const el = document.getElementById('gameStatus');
         if (el) {
-          el.textContent = 'Esperando...';
+          el.textContent = 'Esperando…';
           el.className = 'status-val waiting';
         }
       });

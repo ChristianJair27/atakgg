@@ -3,23 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <title>ATAK.GG HUD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --red: #dc2626;
-      --red-dim: #991b1b;
-      --bg: rgba(10, 10, 10, 0.88);
-      --bg-card: rgba(20, 20, 20, 0.92);
-      --border: rgba(255, 255, 255, 0.07);
+      --red: #e23b4e;
+      --ink: rgba(10, 11, 15, 0.82);
+      --border: rgba(255, 255, 255, 0.08);
       --text: #f1f1f1;
-      --muted: #888;
-      --green: #22c55e;
-      --yellow: #f59e0b;
+      --muted: rgba(255,255,255,0.4);
+      --green: #34d399;
+      --yellow: #fcd34d;
+      --heading: 'Instrument Serif', Georgia, serif;
+      --body: 'Barlow', system-ui, sans-serif;
     }
 
     body {
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-family: var(--body);
       background: transparent;
       color: var(--text);
       user-select: none;
@@ -27,226 +30,114 @@
       width: 290px;
     }
 
+    /* ── Liquid glass HUD ── */
     .hud {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--red);
-      border-radius: 10px;
+      position: relative;
+      background: var(--ink);
+      backdrop-filter: blur(18px) saturate(150%);
+      -webkit-backdrop-filter: blur(18px) saturate(150%);
+      border-radius: 16px;
       overflow: hidden;
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(220,38,38,0.1);
+      box-shadow: 0 10px 36px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,255,255,0.10);
+    }
+    .hud::before {
+      content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.4px;
+      background: linear-gradient(180deg,
+        rgba(255,255,255,.45) 0%, rgba(255,255,255,.14) 20%,
+        rgba(255,255,255,0) 42%, rgba(255,255,255,0) 58%,
+        rgba(255,255,255,.14) 80%, rgba(255,255,255,.45) 100%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
     }
 
     /* Title bar */
     .title-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 10px 7px;
-      background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 11px 8px;
+      background: rgba(0,0,0,0.35);
       border-bottom: 1px solid var(--border);
-      -webkit-app-region: drag;
-      cursor: move;
+      -webkit-app-region: drag; cursor: move;
     }
-    .title-bar .logo {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: var(--red);
-    }
-    .logo-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--red);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
-    .title-btn {
-      -webkit-app-region: no-drag;
-      cursor: pointer;
-      width: 20px; height: 20px;
+    .title-bar .logo { display: flex; align-items: center; gap: 7px; }
+    .logo-mark {
+      width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+      background: linear-gradient(135deg, rgba(226,59,78,.20), rgba(226,59,78,.04));
       display: flex; align-items: center; justify-content: center;
-      border-radius: 4px;
-      font-size: 12px;
-      color: var(--muted);
-      border: none;
-      background: transparent;
-      transition: background 0.15s, color 0.15s;
+    }
+    .logo-mark svg { width: 12px; height: 12px; color: var(--red); }
+    .logo-word { font-family: var(--heading); font-style: italic; font-size: 17px; color: #fff; line-height: 1; }
+    .logo-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .title-btn {
+      -webkit-app-region: no-drag; cursor: pointer;
+      width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+      border-radius: 6px; font-size: 13px; color: var(--muted);
+      border: none; background: transparent; transition: background 0.15s, color 0.15s;
     }
     .title-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
 
     /* Waiting state */
-    .waiting {
-      padding: 20px 14px;
-      text-align: center;
-    }
-    .waiting-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
-    .waiting-text { font-size: 11px; color: var(--muted); line-height: 1.6; }
-    .waiting-hint {
-      margin-top: 10px;
-      font-size: 10px;
-      color: rgba(220,38,38,0.6);
-      letter-spacing: 0.5px;
-    }
+    .waiting { padding: 24px 14px; text-align: center; }
+    .waiting-icon { font-size: 30px; margin-bottom: 10px; opacity: 0.5; }
+    .waiting-text { font-family: var(--heading); font-style: italic; font-size: 17px; color: rgba(255,255,255,0.75); line-height: 1.4; }
+    .waiting-hint { margin-top: 10px; font-size: 9.5px; font-weight: 300; color: rgba(226,59,78,0.7); letter-spacing: 0.4px; }
 
     /* Game content */
     .game-content { display: none; }
     .game-content.active { display: block; }
 
     /* Player info */
-    .player-info {
-      padding: 8px 12px 6px;
-      border-bottom: 1px solid var(--border);
-    }
-    .champion-name {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text);
-    }
-    .summoner-name {
-      font-size: 10px;
-      color: var(--muted);
-      margin-top: 1px;
-    }
+    .player-info { padding: 10px 13px 7px; border-bottom: 1px solid var(--border); }
+    .champion-name { font-family: var(--heading); font-style: italic; font-size: 19px; color: var(--text); line-height: 1; }
+    .summoner-name { font-size: 9.5px; font-weight: 300; color: var(--muted); margin-top: 3px; }
 
     /* KDA section */
-    .kda-section {
-      padding: 10px 12px 8px;
-      border-bottom: 1px solid var(--border);
-      text-align: center;
-    }
+    .kda-section { padding: 11px 12px 9px; border-bottom: 1px solid var(--border); text-align: center; }
     .kda-row {
-      display: flex;
-      justify-content: center;
-      align-items: baseline;
-      gap: 2px;
-      font-size: 26px;
-      font-weight: 800;
-      line-height: 1;
-      letter-spacing: -1px;
+      display: flex; justify-content: center; align-items: baseline; gap: 3px;
+      font-family: var(--heading); font-style: italic; font-size: 30px; line-height: 1; letter-spacing: -0.5px;
     }
-    .kda-k { color: #86efac; }
-    .kda-sep { color: var(--muted); font-size: 18px; margin: 0 2px; }
+    .kda-k { color: var(--green); }
+    .kda-sep { color: rgba(255,255,255,0.18); font-size: 20px; margin: 0 2px; }
     .kda-d { color: #fca5a5; }
     .kda-a { color: #93c5fd; }
-    .kda-labels {
-      display: flex;
-      justify-content: center;
-      gap: 14px;
-      margin-top: 3px;
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .kda-label-k { color: #86efac; opacity: 0.7; }
+    .kda-labels { display: flex; justify-content: center; gap: 16px; margin-top: 5px; font-size: 8.5px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; }
+    .kda-label-k { color: var(--green); opacity: 0.7; }
     .kda-label-d { color: #fca5a5; opacity: 0.7; }
     .kda-label-a { color: #93c5fd; opacity: 0.7; }
 
     /* Stats grid */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      border-bottom: 1px solid var(--border);
-    }
-    .stat-cell {
-      padding: 7px 12px;
-      border-right: 1px solid var(--border);
-    }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border); }
+    .stat-cell { padding: 8px 13px; border-right: 1px solid var(--border); }
     .stat-cell:nth-child(even) { border-right: none; }
-    .stat-label {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 2px;
-    }
-    .stat-value {
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--text);
-    }
-    .stat-value.gold-val { color: #fcd34d; }
+    .stat-label { font-size: 8.5px; font-weight: 600; letter-spacing: 0.9px; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+    .stat-value { font-family: var(--heading); font-style: italic; font-size: 19px; color: var(--text); line-height: 1; }
+    .stat-value.gold-val { color: var(--yellow); }
 
     /* Game time bar */
     .time-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 5px 12px;
-      background: rgba(0,0,0,0.3);
-      border-bottom: 1px solid var(--border);
-      font-size: 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 13px; background: rgba(0,0,0,0.25);
+      border-bottom: 1px solid var(--border); font-size: 9px;
     }
-    .time-label { color: var(--muted); letter-spacing: 0.5px; }
-    .time-value {
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--text);
-    }
+    .time-label { color: var(--muted); letter-spacing: 0.6px; font-weight: 500; }
+    .time-value { font-family: var(--heading); font-style: italic; font-size: 16px; color: var(--text); }
 
     /* Objectives */
-    .objectives {
-      padding: 7px 12px;
-      border-bottom: 1px solid var(--border);
-    }
-    .obj-title {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    .obj-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 3px 0;
-      font-size: 11px;
-    }
-    .obj-name {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      color: rgba(255,255,255,0.75);
-    }
-    .obj-time { font-family: 'Courier New', monospace; font-size: 11px; font-weight: 600; }
+    .objectives { padding: 8px 13px; border-bottom: 1px solid var(--border); }
+    .obj-title { font-size: 8.5px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+    .obj-row { display: flex; align-items: center; justify-content: space-between; padding: 3px 0; font-size: 11px; }
+    .obj-name { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.78); }
+    .obj-time { font-family: var(--body); font-size: 11px; font-weight: 600; }
     .obj-time.active { color: var(--green); }
     .obj-time.soon { color: var(--yellow); }
     .obj-time.upcoming { color: var(--muted); }
     .obj-time.dead { color: rgba(255,255,255,0.25); text-decoration: line-through; }
 
     /* Footer */
-    .hud-footer {
-      padding: 6px 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .hotkey-hint {
-      font-size: 9px;
-      color: rgba(255,255,255,0.2);
-      letter-spacing: 0.5px;
-    }
-    .hotkey-key {
-      display: inline-block;
-      padding: 1px 4px;
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 3px;
-      font-size: 9px;
-    }
+    .hud-footer { padding: 7px 13px; display: flex; align-items: center; justify-content: space-between; }
+    .hotkey-hint { font-size: 9px; color: rgba(255,255,255,0.25); letter-spacing: 0.5px; }
+    .hotkey-key { display: inline-block; padding: 1px 5px; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; font-size: 9px; }
   </style>
 </head>
 <body>
@@ -254,18 +145,17 @@
     <!-- Title Bar -->
     <div class="title-bar">
       <div class="logo">
-        <div class="logo-dot" id="statusDot"></div>
-        ATAK.GG
+        <span class="logo-mark"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.2l1.85 12.4-1.85 2.5-1.85-2.5L12 1.2z"/><path d="M7.3 14.0h9.4v1.6H7.3z"/><path d="M11.05 15.8h1.9v4.9l-.95 1.1-.95-1.1z"/></svg></span>
+        <span class="logo-word">atak</span>
+        <span class="logo-dot" id="statusDot"></span>
       </div>
       <button class="title-btn" id="toggleBtn" title="Toggle (F8)">–</button>
     </div>
 
     <!-- Waiting for game -->
     <div id="waitingState" class="waiting">
-      <div class="waiting-icon">🎮</div>
-      <div class="waiting-text">
-        Esperando a<br/>League of Legends...
-      </div>
+      <div class="waiting-icon">🗡️</div>
+      <div class="waiting-text">Esperando a<br/>League of Legends…</div>
       <div class="waiting-hint">El HUD aparecerá automáticamente</div>
     </div>
 
@@ -447,14 +337,14 @@
     function showGame() {
       waitingState.style.display = 'none';
       gameContent.classList.add('active');
-      statusDot.style.background = '#22c55e';
-      statusDot.style.boxShadow = '0 0 6px #22c55e';
+      statusDot.style.background = '#34d399';
+      statusDot.style.boxShadow = '0 0 6px #34d399';
     }
 
     function showWaiting() {
       waitingState.style.display = 'block';
       gameContent.classList.remove('active');
-      statusDot.style.background = '#dc2626';
+      statusDot.style.background = '#e23b4e';
       statusDot.style.boxShadow = '';
       if (localTick) { clearInterval(localTick); localTick = null; }
     }
