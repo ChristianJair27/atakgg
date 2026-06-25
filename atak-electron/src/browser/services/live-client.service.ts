@@ -12,6 +12,7 @@ export interface GameState {
   level: number;
   gameTime: number;
   position: string;
+  gameMode: string;
   isActive: boolean;
 }
 
@@ -26,6 +27,7 @@ const EMPTY_STATE: GameState = {
   level: 1,
   gameTime: 0,
   position: '',
+  gameMode: '',
   isActive: false,
 };
 
@@ -107,6 +109,7 @@ export class LiveClientService extends EventEmitter {
         level: activePlayer?.level ?? 1,
         gameTime: Math.floor(gameData?.gameTime ?? 0),
         position: myPlayer?.position ?? '',
+        gameMode: gameData?.gameMode ?? '',
         isActive: true,
       };
 

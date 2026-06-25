@@ -184,7 +184,10 @@ body{font-family:var(--body);color:#fff}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>
-const { ipcRenderer, shell } = window.require('electron');
+// Electron when running inside the app; harmless stubs in a plain browser (preview).
+const _el = (typeof window !== 'undefined' && window.require) ? window.require('electron') : {};
+const ipcRenderer = _el.ipcRenderer || { on: () => {} };
+const shell = _el.shell || { openExternal: (u) => window.open(u, '_blank') };
 const $ = id => document.getElementById(id)
 let ddPatch = null, lastEogData = null, currentPlatform = 'la1'
 

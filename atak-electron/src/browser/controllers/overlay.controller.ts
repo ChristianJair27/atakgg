@@ -118,7 +118,7 @@ export class OverlayController {
     const { width } = screen.getPrimaryDisplay().workAreaSize;
     this.fallbackWindow = new BrowserWindow({
       width: 300,
-      height: 470,
+      height: 548,
       x: width - 320,
       y: 20,
       frame: false,
