@@ -1,17 +1,28 @@
 // Data Dragon & CDragon asset URL helpers
 
-const DD_VERSION = '15.12.1';
+const DD_VERSION = '16.13.1';
 const DD_BASE = `https://ddragon.leagueoflegends.com/cdn/${DD_VERSION}`;
+const DD_IMG = 'https://ddragon.leagueoflegends.com/cdn/img';
 const CDRAGON_BASE = 'https://raw.communitydragon.org/latest';
 
+// Champion icon keys are alphanumeric (e.g. "MissFortune", "MonkeyKing"); strip
+// any stray spaces/punctuation so display-name fallbacks still resolve.
+const champKey = (name: string) => (name || '').replace(/[^a-zA-Z0-9]/g, '');
+
 export const dd = {
-  champion: (name: string) => `${DD_BASE}/img/champion/${encodeURIComponent(name)}.png`,
-  championSplash: (name: string, skin = 0) => `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${name}_${skin}.jpg`,
+  champion: (name: string) => `${DD_BASE}/img/champion/${champKey(name)}.png`,
+  championSplash: (name: string, skin = 0) => `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${champKey(name)}_${skin}.jpg`,
   item: (id: number) => id ? `${DD_BASE}/img/item/${id}.png` : '',
   spell: (name: string) => `${DD_BASE}/img/spell/${name}.png`,
   profileIcon: (id: number) => `${DD_BASE}/img/profileicon/${id}.png`,
   rune: (path: string) => `${CDRAGON_BASE}/plugins/rcp-be-lol-game-data/global/default/${path.replace(/^\//, '').toLowerCase()}`,
 };
+
+/** Ranked emblem (tier) icon — CommunityDragon. Folder is singular: ranked-emblem */
+export function rankEmblem(tier?: string): string {
+  if (!tier) return '';
+  return `${CDRAGON_BASE}/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblem/emblem-${tier.toLowerCase()}.png`;
+}
 
 /** Map summoner spell integer IDs to their Data Dragon name strings */
 export const SUMMONER_SPELL_NAMES: Record<number, string> = {
@@ -44,52 +55,52 @@ export function spellIcon(id: number): string {
   return name ? dd.spell(name) : '';
 }
 
-/** Rune keystone paths (Community Dragon) */
+/** Keystone id → DDragon perk-image path (under Styles/). Full filenames matter
+ *  (e.g. LethalTempoTemp, VeteranAftershock). */
 const KEYSTONE_PATHS: Record<number, string> = {
   // Precision
-  8005: 'press-the-attack',
-  8008: 'lethal-tempo',
-  8021: 'fleet-footwork',
-  8010: 'conqueror',
+  8005: 'Precision/PressTheAttack/PressTheAttack',
+  8008: 'Precision/LethalTempo/LethalTempoTemp',
+  8021: 'Precision/FleetFootwork/FleetFootwork',
+  8010: 'Precision/Conqueror/Conqueror',
   // Domination
-  8112: 'electrocute',
-  8124: 'predator',
-  8128: 'dark-harvest',
-  9923: 'hail-of-blades',
+  8112: 'Domination/Electrocute/Electrocute',
+  8124: 'Domination/Predator/Predator',
+  8128: 'Domination/DarkHarvest/DarkHarvest',
+  9923: 'Domination/HailOfBlades/HailOfBlades',
   // Sorcery
-  8214: 'summon-aery',
-  8229: 'arcane-comet',
-  8230: 'phase-rush',
+  8214: 'Sorcery/SummonAery/SummonAery',
+  8229: 'Sorcery/ArcaneComet/ArcaneComet',
+  8230: 'Sorcery/PhaseRush/PhaseRush',
   // Resolve
-  8437: 'grasp-of-the-undying',
-  8439: 'aftershock',
-  8465: 'guardian',
+  8437: 'Resolve/GraspOfTheUndying/GraspOfTheUndying',
+  8439: 'Resolve/VeteranAftershock/VeteranAftershock',
+  8465: 'Resolve/Guardian/Guardian',
   // Inspiration
-  8351: 'glacial-augment',
-  8360: 'unsealed-spellbook',
-  8369: 'first-strike',
+  8351: 'Inspiration/GlacialAugment/GlacialAugment',
+  8360: 'Inspiration/UnsealedSpellbook/UnsealedSpellbook',
+  8369: 'Inspiration/FirstStrike/FirstStrike',
 };
 
-/** Returns a CDragon-hosted keystone icon URL */
+/** Returns a DDragon-hosted keystone icon URL */
 export function keystoneIcon(id: number): string {
-  const slug = KEYSTONE_PATHS[id];
-  if (!slug) return '';
-  return `${CDRAGON_BASE}/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/styles/${slug}.png`;
+  const p = KEYSTONE_PATHS[id];
+  return p ? `${DD_IMG}/perk-images/Styles/${p}.png` : '';
 }
 
-/** Rune path/tree IDs → CDragon folder */
-const RUNE_PATH_FOLDERS: Record<number, string> = {
-  8000: 'precision',
-  8100: 'domination',
-  8200: 'sorcery',
-  8300: 'inspiration',
-  8400: 'resolve',
+/** Rune path/tree style id → CommunityDragon style icon filename */
+const RUNE_PATH_FILES: Record<number, string> = {
+  8000: '7201_precision',
+  8100: '7200_domination',
+  8200: '7202_sorcery',
+  8300: '7203_whimsy',
+  8400: '7204_resolve',
 };
 
 export function runePathIcon(styleId: number): string {
-  const folder = RUNE_PATH_FOLDERS[styleId];
-  if (!folder) return '';
-  return `${CDRAGON_BASE}/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/styles/${folder}.png`;
+  const file = RUNE_PATH_FILES[styleId];
+  if (!file) return '';
+  return `${CDRAGON_BASE}/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/styles/${file}.png`;
 }
 
 /** Format seconds to mm:ss */

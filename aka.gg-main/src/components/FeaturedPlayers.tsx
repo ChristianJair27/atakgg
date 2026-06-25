@@ -23,7 +23,7 @@ interface FeaturedPlayer {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DDRAGON_VERSION = '14.10.1'; // fallback version, real one comes from useChampions
 const EMBLEM = (tier?: string) =>
-  tier ? `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblems/emblem-${tier.toLowerCase()}.png` : '';
+  tier ? `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblem/emblem-${tier.toLowerCase()}.png` : '';
 const PROFILE_ICON = (id: number | null, version = DDRAGON_VERSION) =>
   id ? `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/${id}.png` : null;
 const CHAMP_ICON = (champId: number | null) =>

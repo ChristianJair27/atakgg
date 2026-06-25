@@ -159,7 +159,7 @@ function ParticipantRow({
               )}
               <MultikillBadge p={p} />
             </div>
-            <span className="text-[10px] text-white/30">{p.teamPosition || p.role}</span>
+            <span className="text-[10px] text-white/30">{p.teamPosition || (p as any).role || ''}</span>
           </div>
         </div>
       </td>
@@ -244,7 +244,7 @@ function TeamTable({
   const HEADERS = ['Campeón', 'Hechizos', 'KDA', 'CS', 'Daño', 'Oro', 'Visión', 'Ítems'];
 
   return (
-    <div className={cn('rounded-2xl border border-white/[0.06] overflow-hidden mb-4', winBadge && 'ring-1 ring-inset', teamColor === 'blue' ? 'ring-blue-500/30' : 'ring-red-500/30')}>
+    <div className={cn('rounded-[24px] overflow-hidden mb-4 bg-white/[0.015] shadow-[0_18px_50px_-22px_rgba(0,0,0,0.8)]')}>
       {/* Team header */}
       <div className={cn('flex items-center justify-between px-4 py-2.5', headerBg)}>
         <div className="flex items-center gap-3">
@@ -514,7 +514,11 @@ export function MatchStatsDetail({
       {showConfetti && <Confetti />}
 
       {/* Match header */}
-      <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 mb-5">
+      <motion.div
+        initial={{ opacity: 0, y: 22, filter: 'blur(8px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+        transition={{ duration: 0.6, ease: [0.2, 0.7, 0.2, 1] }}
+        className="rounded-[28px] bg-gradient-to-b from-white/[0.06] to-white/[0.01] p-5 mb-5 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.07)]">
         <div className="flex flex-col sm:flex-row items-center gap-4">
           {/* Blue team */}
           <div className={cn(
@@ -593,7 +597,7 @@ export function MatchStatsDetail({
             </div>
           ))}
         </div>
-      </div>
+      </motion.div>
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-white/[0.06] mb-5 overflow-x-auto">
@@ -620,7 +624,7 @@ export function MatchStatsDetail({
         {/* Daño */}
         {tab === 'daño' && (
           <motion.div key="damage" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+            className="rounded-[24px] bg-white/[0.02] p-5 shadow-[0_18px_50px_-22px_rgba(0,0,0,0.8)]">
             <DamageChart blueTeam={blueTeam} redTeam={redTeam} />
           </motion.div>
         )}
@@ -628,7 +632,7 @@ export function MatchStatsDetail({
         {/* Oro */}
         {tab === 'oro' && (
           <motion.div key="gold" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+            className="rounded-[24px] bg-white/[0.02] p-5 shadow-[0_18px_50px_-22px_rgba(0,0,0,0.8)]">
             <GoldChart blueTeam={blueTeam} redTeam={redTeam} />
           </motion.div>
         )}
@@ -636,7 +640,7 @@ export function MatchStatsDetail({
         {/* Objetivos */}
         {tab === 'objetivos' && (
           <motion.div key="objectives" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+            className="rounded-[24px] bg-white/[0.02] p-5 shadow-[0_18px_50px_-22px_rgba(0,0,0,0.8)]">
             <ObjectivesChart blue={blueObjectives} red={redObjectives} />
           </motion.div>
         )}
@@ -646,7 +650,7 @@ export function MatchStatsDetail({
       {isComplete && (
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-          className="mt-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-5"
+          className="mt-5 rounded-[24px] bg-gradient-to-b from-yellow-500/[0.10] to-transparent p-5 shadow-[0_18px_50px_-22px_rgba(0,0,0,0.8)]"
         >
           <p className="text-xs text-yellow-400/60 uppercase tracking-widest font-bold mb-4">⭐ Top Performers</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -656,11 +660,14 @@ export function MatchStatsDetail({
               { label: 'Mayor Oro',   value: [...blueTeam, ...redTeam].sort((a,b) => b.goldEarned - a.goldEarned)[0] },
               { label: 'Mejor Visión',value: [...blueTeam, ...redTeam].sort((a,b) => b.visionScore - a.visionScore)[0] },
             ].map(({ label, value: p }) => p && (
-              <div key={label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 text-center">
+              <motion.div key={label}
+                whileHover={{ y: -5, scale: 1.04 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                className="rounded-2xl bg-white/[0.04] p-3 text-center shadow-[0_12px_34px_-18px_rgba(0,0,0,0.85)]">
                 <ChampIcon name={p.championName} size="sm" />
                 <p className="text-xs font-semibold text-white mt-2 truncate">{p.summonerName}</p>
                 <p className="text-[10px] text-yellow-400 mt-0.5">{label}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
         </motion.div>

@@ -50,7 +50,7 @@ const TIER_COLORS: Record<string,string> = {
   MASTER:'#9966cc', GRANDMASTER:'#ff6633', CHALLENGER:'#f4c430',
 };
 const RANKED_EMBLEM = (tier?: string) =>
-  tier ? `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblems/emblem-${tier.toLowerCase()}.png` : '';
+  tier ? `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblem/emblem-${tier.toLowerCase()}.png` : '';
 
 const getSplashUrl = (slug: string, skin: number) =>
   `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${slug}_${skin}.jpg`;
