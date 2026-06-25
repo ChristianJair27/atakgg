@@ -1,0 +1,55 @@
+/* atak-loader.css — premium loading screen (Katarina + orbiting daggers) */
+#atak-loader{
+  position:fixed;inset:0;z-index:9999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  background:
+    radial-gradient(ellipse 75% 60% at 50% 42%, rgba(40,8,14,.55), transparent 70%),
+    linear-gradient(180deg, rgba(2,3,6,.78), rgba(2,3,6,.9));
+  backdrop-filter:blur(10px) saturate(120%);-webkit-backdrop-filter:blur(10px) saturate(120%);
+  opacity:1;transition:opacity .6s ease;
+}
+#atak-loader.akl-hide{opacity:0;pointer-events:none}
+
+/* Stage: dancing Katarina + orbiting daggers */
+.akl-stage{position:relative;width:128px;height:128px;display:flex;align-items:center;justify-content:center}
+.akl-halo{
+  position:absolute;inset:6px;border-radius:50%;
+  background:radial-gradient(circle at 50% 40%, rgba(226,59,78,.22), transparent 68%);
+  filter:blur(4px);
+}
+.akl-kata{
+  width:98px;height:98px;border-radius:50%;object-fit:cover;object-position:top center;
+  border:1.5px solid rgba(226,59,78,.5);
+  box-shadow:0 0 34px rgba(200,30,50,.32), inset 0 0 22px rgba(0,0,0,.45);
+  animation:aklDance 1.9s ease-in-out infinite;
+}
+@keyframes aklDance{
+  0%,100%{transform:translateY(0) rotate(-3.5deg)}
+  25%{transform:translateY(-5px) rotate(2.5deg)}
+  50%{transform:translateY(0) rotate(3.5deg)}
+  75%{transform:translateY(-5px) rotate(-2.5deg)}
+}
+/* Orbiting daggers */
+.akl-ring{position:absolute;inset:0;animation:aklSpin 3.4s linear infinite}
+@keyframes aklSpin{to{transform:rotate(360deg)}}
+.akl-d{position:absolute;left:50%;top:50%;width:0;height:0}
+.akl-d svg{position:absolute;left:-8px;top:-71px;width:16px;height:16px;color:#e23b4e;filter:drop-shadow(0 0 5px rgba(226,59,78,.7))}
+.akl-d.d2{transform:rotate(120deg)}
+.akl-d.d3{transform:rotate(240deg)}
+
+/* Wordmark */
+.akl-word{
+  font-family:'Instrument Serif',Georgia,serif;font-style:italic;
+  font-size:34px;color:#fff;letter-spacing:-.01em;line-height:1;
+  display:flex;align-items:center;gap:9px;
+}
+.akl-word .akl-mark{width:24px;height:24px;color:#e23b4e;filter:drop-shadow(0 0 6px rgba(226,59,78,.55))}
+.akl-sub{
+  font-family:'Barlow',system-ui,sans-serif;font-weight:300;font-size:9.5px;
+  letter-spacing:.42em;text-transform:uppercase;color:rgba(255,255,255,.42);margin-top:-6px;
+}
+/* Sweep bar */
+.akl-bar{width:128px;height:2px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:4px}
+.akl-bar i{display:block;height:100%;width:38%;border-radius:2px;
+  background:linear-gradient(90deg,transparent,#e23b4e,transparent);animation:aklSweep 1.25s ease-in-out infinite}
+@keyframes aklSweep{0%{transform:translateX(-110%)}100%{transform:translateX(330%)}}
