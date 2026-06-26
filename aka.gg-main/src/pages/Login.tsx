@@ -54,9 +54,14 @@ export default function Login() {
     }
   };
 
+  const apiBase = API_BASE.replace(/\/$/, "");
   const onGoogle = () => {
     // redirige al flujo de OAuth del backend
-    window.location.href = `${API_BASE}auth/google`;
+    window.location.href = `${apiBase}/auth/google`;
+  };
+  const onRiot = () => {
+    // Riot Sign-On (RSO)
+    window.location.href = `${apiBase}/auth/riot`;
   };
 
   return (
@@ -72,6 +77,16 @@ export default function Login() {
           </CardHeader>
 
           <CardContent className="space-y-4">
+            {/* Riot Sign-On (RSO) */}
+            <Button
+              type="button"
+              className="w-full bg-[#e23b4e] hover:bg-[#c91f33] text-white border-0"
+              onClick={onRiot}
+              disabled={isLoading}
+            >
+              Iniciar sesión con Riot
+            </Button>
+
             {/* Google OAuth */}
             <Button
               type="button"
