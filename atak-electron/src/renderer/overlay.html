@@ -139,6 +139,37 @@
     .hotkey-hint { font-size: 9px; color: rgba(255,255,255,0.25); letter-spacing: 0.5px; }
     .hotkey-key { display: inline-block; padding: 1px 5px; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; font-size: 9px; }
 
+    /* Header buttons */
+    .title-btns { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+
+    /* Items */
+    .items-row { display: flex; gap: 3px; padding: 8px 13px; border-bottom: 1px solid var(--border); align-items: center; }
+    .items-row .il { font-size: 8px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; margin-right: 3px; flex-shrink: 0; }
+    .iitem { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+    .iitem.empty { opacity: .16; border-style: dashed; background: transparent; }
+
+    /* Extra stats (vision / KP) */
+    .xrow { display: flex; border-bottom: 1px solid var(--border); }
+    .xcell { flex: 1; padding: 7px 13px; display: flex; align-items: baseline; gap: 6px; justify-content: center; }
+    .xcell + .xcell { border-left: 1px solid var(--border); }
+    .xcell .xv { font-family: var(--heading); font-style: italic; font-size: 16px; color: #fff; }
+    .xcell .xl { font-size: 8px; letter-spacing: 1.2px; color: var(--muted); text-transform: uppercase; }
+
+    /* Teams scoreboard */
+    .teams { padding: 9px 11px; border-bottom: 1px solid var(--border); }
+    .teams-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 9px; }
+    .tcol-h { font-size: 7.5px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 5px; display: flex; align-items: center; gap: 4px; }
+    .tcol-h.ally { color: var(--green); } .tcol-h.enemy { color: var(--red); }
+    .tdot { width: 5px; height: 5px; border-radius: 50%; }
+    .tcol-h.ally .tdot { background: var(--green); } .tcol-h.enemy .tdot { background: var(--red); }
+    .prow2 { display: flex; align-items: center; gap: 5px; padding: 2.5px 3px; margin-bottom: 1px; border-radius: 6px; }
+    .prow2.me { background: rgba(226,59,78,.12); }
+    .prow2.dead { opacity: .4; filter: grayscale(.4); }
+    .pic { width: 18px; height: 18px; border-radius: 5px; object-fit: cover; flex-shrink: 0; border: 1px solid rgba(255,255,255,.08); }
+    .pnm { flex: 1; min-width: 0; font-size: 8.5px; color: rgba(255,255,255,.72); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pkda { font-size: 8px; color: rgba(255,255,255,.5); flex-shrink: 0; }
+    .pkda .pk { color: var(--green); } .pkda .pd { color: #fca5a5; } .pkda .pa { color: #93c5fd; }
+
     /* Live coach notes */
     .notes-section { padding: 9px 13px; border-bottom: 1px solid var(--border); }
     .notes-title { font-size: 8.5px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--red); margin-bottom: 7px; display: flex; align-items: center; gap: 5px; }
@@ -165,7 +196,12 @@
         <span class="logo-word">atak</span>
         <span class="logo-dot" id="statusDot"></span>
       </div>
-      <button class="title-btn" id="toggleBtn" title="Toggle (F8)">–</button>
+      <div class="title-btns">
+        <button class="title-btn" id="pinBtn" title="Fijar siempre visible">⌖</button>
+        <button class="title-btn" id="profileBtn" title="Ver mi perfil en ATAK.GG">◢</button>
+        <button class="title-btn" id="toggleBtn" title="Ocultar (F8)">–</button>
+        <button class="title-btn" id="closeBtn" title="Cerrar">✕</button>
+      </div>
     </div>
 
     <!-- Waiting for game -->
@@ -216,6 +252,29 @@
         <div class="stat-cell">
           <div class="stat-label">CS/min</div>
           <div class="stat-value" id="statCsMin">0.0</div>
+        </div>
+      </div>
+
+      <!-- Items -->
+      <div class="items-row" id="itemsRow"><span class="il">Items</span></div>
+
+      <!-- Vision / KP -->
+      <div class="xrow">
+        <div class="xcell"><span class="xv" id="statVision">0</span><span class="xl">Visión</span></div>
+        <div class="xcell"><span class="xv" id="statKp">0%</span><span class="xl">KP</span></div>
+      </div>
+
+      <!-- Teams scoreboard -->
+      <div class="teams">
+        <div class="teams-grid">
+          <div>
+            <div class="tcol-h ally"><span class="tdot"></span>Aliados</div>
+            <div id="allyList"></div>
+          </div>
+          <div>
+            <div class="tcol-h enemy"><span class="tdot"></span>Enemigos</div>
+            <div id="enemyList"></div>
+          </div>
         </div>
       </div>
 
@@ -284,6 +343,41 @@
     const elHerald  = document.getElementById('objHerald');
     const elBaron   = document.getElementById('objBaron');
     const elNotes   = document.getElementById('noteList');
+    const elItems   = document.getElementById('itemsRow');
+    const elVision  = document.getElementById('statVision');
+    const elKp      = document.getElementById('statKp');
+    const elAlly    = document.getElementById('allyList');
+    const elEnemy   = document.getElementById('enemyList');
+    let currentSummoner = '';
+
+    const DDV = '16.13.1';
+    const itemImg  = (id) => `https://ddragon.leagueoflegends.com/cdn/${DDV}/img/item/${id}.png`;
+    const champImg = (n)  => `https://ddragon.leagueoflegends.com/cdn/${DDV}/img/champion/${(n || '').replace(/[^a-zA-Z0-9]/g, '')}.png`;
+
+    function renderItems(items) {
+      const ids = (items || []).slice(0, 7);
+      let html = '<span class="il">Items</span>';
+      for (let i = 0; i < 7; i++) {
+        const id = ids[i];
+        html += id
+          ? `<img class="iitem" src="${itemImg(id)}" onerror="this.classList.add('empty');this.removeAttribute('src')"/>`
+          : '<div class="iitem empty"></div>';
+      }
+      elItems.innerHTML = html;
+    }
+
+    function renderTeams(s) {
+      const me = s.myTeam || 'ORDER';
+      const mk = (p) => `<div class="prow2 ${p.isMe ? 'me' : ''} ${p.isDead ? 'dead' : ''}">
+        <img class="pic" src="${champImg(p.championName)}" onerror="this.style.opacity=.12" />
+        <span class="pnm">${p.championName || p.name || '—'}</span>
+        <span class="pkda"><span class="pk">${p.kills}</span>/<span class="pd">${p.deaths}</span>/<span class="pa">${p.assists}</span></span>
+      </div>`;
+      const ally  = (s.players || []).filter((p) => p.team === me);
+      const enemy = (s.players || []).filter((p) => p.team !== me);
+      elAlly.innerHTML  = ally.map(mk).join('');
+      elEnemy.innerHTML = enemy.map(mk).join('');
+    }
 
     function fmt(secs) {
       const m = Math.floor(secs / 60);
@@ -411,6 +505,12 @@
       elTime.textContent = fmt(gameTime);
       updateObjectives(gameTime);
       renderNotes(state);
+
+      currentSummoner = state.summonerName || currentSummoner;
+      renderItems(state.items);
+      elVision.textContent = state.visionScore ?? 0;
+      elKp.textContent = (state.killParticipation ?? 0) + '%';
+      renderTeams(state);
     }
 
     function showGame() {
@@ -448,10 +548,11 @@
       showWaiting();
     });
 
-    // Toggle button
-    document.getElementById('toggleBtn').addEventListener('click', () => {
-      ipcRenderer.send('toggle-overlay');
-    });
+    // Header buttons
+    document.getElementById('toggleBtn').addEventListener('click', () => ipcRenderer.send('toggle-overlay'));
+    document.getElementById('pinBtn').addEventListener('click', () => ipcRenderer.send('pin-overlay'));
+    document.getElementById('profileBtn').addEventListener('click', () => ipcRenderer.send('open-profile', currentSummoner));
+    document.getElementById('closeBtn').addEventListener('click', () => window.close());
 
     // Initialize
     showWaiting();

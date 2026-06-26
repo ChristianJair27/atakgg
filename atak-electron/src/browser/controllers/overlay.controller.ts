@@ -1,5 +1,5 @@
 import path from 'path';
-import { ipcMain, BrowserWindow, screen } from 'electron';
+import { ipcMain, BrowserWindow, screen, shell } from 'electron';
 import {
   OverlayBrowserWindow,
   OverlayWindowOptions,
@@ -117,15 +117,18 @@ export class OverlayController {
 
     const { width } = screen.getPrimaryDisplay().workAreaSize;
     this.fallbackWindow = new BrowserWindow({
-      width: 300,
-      height: 548,
-      x: width - 320,
+      width: 340,
+      height: 680,
+      x: width - 360,
       y: 20,
       frame: false,
       transparent: true,
       resizable: false,
       skipTaskbar: true,
-      focusable: false,
+      // focusable so the header buttons (pin/profile/close) are clickable;
+      // shown with showInactive() below so it doesn't steal focus from the game.
+      focusable: true,
+      show: false,
       alwaysOnTop: true,
       webPreferences: {
         nodeIntegration: true,
@@ -140,8 +143,23 @@ export class OverlayController {
 
     const overlayHtmlPath = path.join(__dirname, '../renderer/overlay.html');
     this.fallbackWindow.loadFile(overlayHtmlPath);
+    // Show without grabbing keyboard focus from the game.
+    this.fallbackWindow.once('ready-to-show', () => this.fallbackWindow?.showInactive());
 
-    this.fallbackWindow.webContents.ipc.on('toggle-overlay', () => this.toggleVisibility());
+    const wc = this.fallbackWindow.webContents;
+    wc.ipc.on('toggle-overlay', () => this.toggleVisibility());
+    wc.ipc.on('pin-overlay', () => {
+      if (!this.fallbackWindow || this.fallbackWindow.isDestroyed()) return;
+      const on = this.fallbackWindow.isAlwaysOnTop();
+      this.fallbackWindow.setAlwaysOnTop(!on, 'screen-saver', 1);
+    });
+    wc.ipc.on('open-profile', (_e, name: string) => {
+      const n = (name || '').trim();
+      const url = n
+        ? `http://localhost:8080/stats/la1/${encodeURIComponent(n)}`
+        : 'http://localhost:8080';
+      shell.openExternal(url).catch(() => {});
+    });
     this.fallbackWindow.on('closed', () => { this.fallbackWindow = null; });
 
     this.isVisible = true;

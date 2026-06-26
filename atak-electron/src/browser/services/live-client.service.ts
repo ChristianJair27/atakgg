@@ -13,7 +13,25 @@ export interface GameState {
   gameTime: number;
   position: string;
   gameMode: string;
+  items: number[];
+  visionScore: number;
+  killParticipation: number;
+  myTeam: string;
+  players: PlayerLite[];
   isActive: boolean;
+}
+
+export interface PlayerLite {
+  championName: string;
+  name: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  team: string;       // 'ORDER' | 'CHAOS'
+  isDead: boolean;
+  position: string;
+  isMe: boolean;
 }
 
 const EMPTY_STATE: GameState = {
@@ -28,6 +46,11 @@ const EMPTY_STATE: GameState = {
   gameTime: 0,
   position: '',
   gameMode: '',
+  items: [],
+  visionScore: 0,
+  killParticipation: 0,
+  myTeam: 'ORDER',
+  players: [],
   isActive: false,
 };
 
@@ -93,23 +116,51 @@ export class LiveClientService extends EventEmitter {
 
       if (!activePlayer || !gameData) return;
 
-      const myName = activePlayer.summonerName ?? '';
-      const myPlayer = allPlayers.find(
-        (p) => p.summonerName === myName
-      ) ?? allPlayers[0];
+      const myName = activePlayer.riotIdGameName || activePlayer.summonerName || '';
+      const nameOf = (p: any) => p?.riotIdGameName || p?.summonerName || '';
+      const myPlayer = allPlayers.find((p) => nameOf(p) === myName) ?? allPlayers[0];
+      const myTeam = myPlayer?.team ?? 'ORDER';
+
+      const items: number[] = (myPlayer?.items ?? [])
+        .map((it: any) => it?.itemID)
+        .filter((id: any) => typeof id === 'number' && id > 0);
+
+      const players: PlayerLite[] = allPlayers.map((p: any) => ({
+        championName: p?.championName ?? '',
+        name: nameOf(p),
+        kills: p?.scores?.kills ?? 0,
+        deaths: p?.scores?.deaths ?? 0,
+        assists: p?.scores?.assists ?? 0,
+        cs: (p?.scores?.creepScore ?? 0),
+        team: p?.team ?? 'ORDER',
+        isDead: !!p?.isDead,
+        position: p?.position ?? '',
+        isMe: nameOf(p) === myName,
+      }));
+
+      // Kill participation = (my kills + assists) / team total kills
+      const myK = myPlayer?.scores?.kills ?? 0;
+      const myA = myPlayer?.scores?.assists ?? 0;
+      const teamKills = players.filter((p) => p.team === myTeam).reduce((s, p) => s + p.kills, 0);
+      const killParticipation = teamKills > 0 ? Math.round(((myK + myA) / teamKills) * 100) : 0;
 
       const state: GameState = {
         summonerName: myName,
         championName: myPlayer?.championName ?? '',
-        kills: myPlayer?.scores?.kills ?? 0,
+        kills: myK,
         deaths: myPlayer?.scores?.deaths ?? 0,
-        assists: myPlayer?.scores?.assists ?? 0,
+        assists: myA,
         cs: myPlayer?.scores?.creepScore ?? 0,
         gold: Math.floor(activePlayer?.currentGold ?? 0),
         level: activePlayer?.level ?? 1,
         gameTime: Math.floor(gameData?.gameTime ?? 0),
         position: myPlayer?.position ?? '',
         gameMode: gameData?.gameMode ?? '',
+        items,
+        visionScore: Math.round(myPlayer?.scores?.wardScore ?? 0),
+        killParticipation,
+        myTeam,
+        players,
         isActive: true,
       };
 
