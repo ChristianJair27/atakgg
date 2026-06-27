@@ -523,7 +523,7 @@ export default function ProfilePage() {
       {/* 3D Katarina loader while resolving the invocador (initial load). */}
       {!puuid && !resolveErr && <KataLoaderOverlay show label="Cargando invocador" />}
 
-      <TopBar region={platform} />
+      {/* Top bar removed — the app's global Navbar is used instead. */}
 
       <div className="atak-glow" style={{ minHeight: '100vh' }}>
         <div style={{ maxWidth: 1340, margin: '0 auto', padding: '18px 18px 80px' }}>

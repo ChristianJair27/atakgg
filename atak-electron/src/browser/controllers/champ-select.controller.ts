@@ -23,6 +23,9 @@ export class ChampSelectController {
   private window: BrowserWindow | null = null;
   private champIdMap: Record<number, string> = {};
   private patch = '14.24.1';
+  // Track the most recently requested champion so a slower in-flight fetch for a
+  // previously-hovered champion can't overwrite the current one (race guard).
+  private currentChampionId: number | null = null;
 
   constructor(private readonly lcuService: LcuService) {
     this.loadChampionIdMap();
@@ -39,6 +42,7 @@ export class ChampSelectController {
       if (state.localPlayerChampionId) {
         this.sendChampionData(state.localPlayerChampionId);
       } else {
+        this.currentChampionId = null;
         this.sendToWindow('champion-cleared', null);
       }
     });
@@ -64,6 +68,9 @@ export class ChampSelectController {
   }
 
   private async sendChampionData(championId: number) {
+    // Mark this as the active request; later results from older champions are dropped.
+    this.currentChampionId = championId;
+
     const champName = this.champIdMap[championId];
     if (!champName) {
       this.sendToWindow('champion-data', { championId, champName: null, loading: true });
@@ -76,9 +83,12 @@ export class ChampSelectController {
       const res = await fetch(`${BACKEND}/api/champ-select?champion=${encodeURIComponent(champName)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      // Stale-response guard: ignore if the user has since hovered another champion.
+      if (this.currentChampionId !== championId) return;
       this.sendToWindow('champion-data', { ...data, loading: false });
     } catch (err: any) {
       console.error('[ATAK CS] failed to fetch recommendations:', err?.message);
+      if (this.currentChampionId !== championId) return;
       this.sendToWindow('champion-data', { championId, champName, loading: false, error: true });
     }
   }

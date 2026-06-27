@@ -253,6 +253,20 @@ function showWaiting() {
   setLoading(false);
 }
 
+function clearBuild() {
+  // Wipe the previous champion's build so nothing stale shows while the new one loads.
+  elPrimPathIcon.src = ''; elPrimPathName.textContent = '—';
+  elSecPathIcon.src = '';  elSecPathName.textContent = '—';
+  elKeystone.src = '';     elKeystone.title = ''; elKeystoneName.textContent = '—';
+  elPrimRunes.innerHTML = '';
+  elSecRunes.innerHTML = '';
+  elShards.innerHTML = '';
+  elStarterRow.innerHTML = '';
+  elCoreRow.innerHTML = '';
+  elBootsIcon.src = '';    elBootsIcon.title = ''; elBootsName.textContent = '—';
+  elTipsList.innerHTML = '';
+}
+
 function showChampBasic(champName, role, patch, portrait) {
   elWaiting.style.display = 'none';
   elChampSect.className = 'champSection active';
@@ -261,13 +275,15 @@ function showChampBasic(champName, role, patch, portrait) {
   elChampRole.textContent = (role || '').toUpperCase();
   elPatchTag.textContent  = patch ? 'Patch ' + patch : '';
 
-  if (portrait) {
-    elPortrait.src = portrait;
-    elSplash.src = portrait;
-  }
+  // Reset portrait/splash even when none provided yet, so it never shows the prior champ.
+  elPortrait.src = portrait || '';
+  elSplash.src = portrait || '';
+
+  clearBuild();
 
   elContent.className = 'content';
   elLoadingPh.style.display = 'block';
+  elLoadingPh.textContent = 'Analizando campeón…';
 }
 
 function showFullData(data) {
