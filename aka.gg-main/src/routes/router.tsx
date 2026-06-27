@@ -18,6 +18,7 @@ const TournamentLivePage   = lazy(() => import('@/pages/TournamentLivePage'));
 const Dashboard            = lazy(() => import('@/pages/Dashboard'));
 const NotFound             = lazy(() => import('@/pages/NotFound'));
 const MatchDetailPage      = lazy(() => import('@/pages/MatchDetailPage'));
+const ProfilePage          = lazy(() => import('@/pages/ProfilePage'));
 
 function PageLoader() {
   return (
@@ -44,6 +45,7 @@ export const AppRouter = () => (
       {/* Eager */}
       <Route path="/"                         element={<Home />} />
       <Route path="/stats/:region/:riotId"    element={<SummonerPage />} />
+      <Route path="/profile/:region/:name"    element={<ProfilePage />} />
 
       {/* Lazy public */}
       <Route path="/login"                    element={<Login />} />
