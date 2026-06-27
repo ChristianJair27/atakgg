@@ -8,6 +8,7 @@ import { axiosInstance } from '@/lib/axios';
 import { MatchStatsDetail } from '@/components/MatchStatsDetail';
 import type { MatchStatsResponse } from '@/types/riot-match';
 import { ArrowLeft } from 'lucide-react';
+import { KataLoaderOverlay } from '@/components/KataLoader';
 
 const C = {
   bg: '#0a0a0c', panel: '#131316', border: 'rgba(255,255,255,0.07)',
@@ -63,6 +64,8 @@ export default function MatchDetailPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, color: '#e8e8ea', fontFamily: "'Saira', system-ui, sans-serif" }}>
+      {/* 3D Katarina loader while the match detail loads. */}
+      {loading && !stats && <KataLoaderOverlay show label="Cargando partida" />}
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '22px 18px 80px' }}>
         <button
           onClick={() => navigate(-1)}

@@ -6,7 +6,7 @@ import { platformToRegional, PROBE_AMERICAS, PROBE_DEFAULT } from "../utils/regi
 import {
   getSummonerByPUUID,
   getChampionMasteriesByPUUID,
-  getLeagueEntriesBySummonerId,
+  getLeagueEntriesByPuuid,
   getAccountByPUUID,
   getMatchIdsByPUUID,
   getMatchById,
@@ -103,22 +103,32 @@ r.get("/summary/:platform/:puuid", async (req, res) => {
     }
   }
 
-  // B) league-v4 (rank)
+  // B) league-v4 (rank) — use the by-PUUID endpoint (reliable; summonerId is deprecated/unstable).
+  // Probe the platform we found the summoner on first, then other platforms by PUUID.
   let rank: { queue: string; tier: string; rank: string; lp: number; wins: number; losses: number }[] = [];
-  if (summoner.id && pfUsed) {
-    try {
-      const le = await getLeagueEntriesBySummonerId(pfUsed, summoner.id);
-      rank = (le || []).map((q) => ({
-        queue: q.queueType, // "RANKED_SOLO_5x5" | "RANKED_FLEX_SR"
-        tier: q.tier,
-        rank: q.rank,
-        lp: q.leaguePoints,
-        wins: (q as any).wins ?? 0,
-        losses: (q as any).losses ?? 0,
-      }));
-    } catch (e: any) {
-      if (e?.response?.status === 403) warnings.push("League-v4 devolvió 403. Ocultando rank.");
-      else warnings.push("No se pudo traer league-v4.");
+  {
+    const leaguePlatforms = pfUsed ? [pfUsed, ...tryPlatforms.filter((p) => p !== pfUsed)] : tryPlatforms;
+    for (const pf of leaguePlatforms) {
+      try {
+        const le = await getLeagueEntriesByPuuid(pf, puuid);
+        if (le && le.length) {
+          rank = le.map((q) => ({
+            queue: q.queueType, // "RANKED_SOLO_5x5" | "RANKED_FLEX_SR"
+            tier: q.tier,
+            rank: q.rank,
+            lp: q.leaguePoints,
+            wins: q.wins ?? 0,
+            losses: q.losses ?? 0,
+          }));
+          pfUsed = pfUsed || pf;
+          break;
+        }
+      } catch (e: any) {
+        const code = e?.response?.status;
+        if (code === 403) { warnings.push("League-v4 devolvió 403. Ocultando rank."); break; }
+        if (code !== 404) { warnings.push("No se pudo traer league-v4."); break; }
+        // 404 → unranked on this platform, try the next one
+      }
     }
   }
 
@@ -667,10 +677,8 @@ async function fetchFeaturedPlayer(seed: typeof FEATURED_SEED[0]) {
 
   const [sumRes, leagueRes, idsRes] = await Promise.allSettled([
     riotGet<any>(`https://${seed.platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`, { headers }),
-    (async () => {
-      const s = await riotGet<any>(`https://${seed.platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`, { headers });
-      return riotGet<any[]>(`https://${seed.platform}.api.riotgames.com/lol/league/v4/entries/by-summoner/${s.data.id}`, { headers });
-    })(),
+    // League via the reliable by-puuid path (summonerId is deprecated/unstable).
+    riotGet<any[]>(`https://${seed.platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${encodeURIComponent(puuid)}`, { headers }),
     riotGet<string[]>(`https://${regional}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids`, { headers, params: { count: 5 } }),
   ]);
 
@@ -1292,6 +1300,91 @@ function normalizeForHost(p: string): string {
   return x;
 }
 
+// ─── Rank distribution estimate (non-apex tiers) ──────────────────────────────
+// Riot's public API doesn't expose exact ladder position below Master, so we
+// estimate top% from a published-style cumulative rank distribution.
+// Each entry: cumulative % of the ranked population that is AT OR ABOVE the
+// FLOOR of that tier+division (i.e. better-or-equal players, including the band).
+// Source shape: realistic Solo/Dúo distribution constants (approx., season-stable).
+// Ordered best → worst. Values are "% of players ranked >= this band's floor".
+const RANK_ORDER = ["IV", "III", "II", "I"]; // division IV is the bottom of a tier
+const TIER_CUTOFFS: Array<{ tier: string; div: string; cumTopPct: number }> = [
+  // tier,   div,  cumulative top% at the floor of this band
+  { tier: "CHALLENGER",  div: "I",  cumTopPct: 0.012 },
+  { tier: "GRANDMASTER", div: "I",  cumTopPct: 0.035 },
+  { tier: "MASTER",      div: "I",  cumTopPct: 0.30 },
+  { tier: "DIAMOND",     div: "I",  cumTopPct: 0.60 },
+  { tier: "DIAMOND",     div: "II", cumTopPct: 0.90 },
+  { tier: "DIAMOND",     div: "III",cumTopPct: 1.30 },
+  { tier: "DIAMOND",     div: "IV", cumTopPct: 2.30 },
+  { tier: "EMERALD",     div: "I",  cumTopPct: 3.50 },
+  { tier: "EMERALD",     div: "II", cumTopPct: 5.20 },
+  { tier: "EMERALD",     div: "III",cumTopPct: 7.30 },
+  { tier: "EMERALD",     div: "IV", cumTopPct: 11.20 },
+  { tier: "PLATINUM",    div: "I",  cumTopPct: 14.50 },
+  { tier: "PLATINUM",    div: "II", cumTopPct: 18.30 },
+  { tier: "PLATINUM",    div: "III",cumTopPct: 22.50 },
+  { tier: "PLATINUM",    div: "IV", cumTopPct: 30.40 },
+  { tier: "GOLD",        div: "I",  cumTopPct: 35.00 },
+  { tier: "GOLD",        div: "II", cumTopPct: 40.00 },
+  { tier: "GOLD",        div: "III",cumTopPct: 45.50 },
+  { tier: "GOLD",        div: "IV", cumTopPct: 54.50 },
+  { tier: "SILVER",      div: "I",  cumTopPct: 59.00 },
+  { tier: "SILVER",      div: "II", cumTopPct: 64.00 },
+  { tier: "SILVER",      div: "III",cumTopPct: 69.50 },
+  { tier: "SILVER",      div: "IV", cumTopPct: 77.50 },
+  { tier: "BRONZE",      div: "I",  cumTopPct: 81.00 },
+  { tier: "BRONZE",      div: "II", cumTopPct: 85.00 },
+  { tier: "BRONZE",      div: "III",cumTopPct: 89.00 },
+  { tier: "BRONZE",      div: "IV", cumTopPct: 94.00 },
+  { tier: "IRON",        div: "I",  cumTopPct: 95.50 },
+  { tier: "IRON",        div: "II", cumTopPct: 97.00 },
+  { tier: "IRON",        div: "III",cumTopPct: 98.50 },
+  { tier: "IRON",        div: "IV", cumTopPct: 100.0 },
+];
+
+// Approx ranked Solo/Dúo population per platform (order of magnitude; for estimate only).
+const REGION_RANKED_POP: Record<string, number> = {
+  na1: 1_600_000, euw1: 2_900_000, eun1: 1_600_000, kr: 1_900_000,
+  br1: 1_500_000, la1: 600_000, la2: 600_000, tr1: 700_000, ru: 600_000,
+  jp1: 250_000, oc1: 300_000,
+};
+const DEFAULT_RANKED_POP = 800_000;
+
+/**
+ * Estimate top% and regional rank for a non-apex tier+division+LP using the
+ * cumulative distribution above. Interpolates within the band by LP (0–100).
+ * Returns { topPercent, regionalRank } as ESTIMATES.
+ */
+function estimateRankStanding(
+  platform: string,
+  tier: string,
+  div: string,
+  lp: number
+): { topPercent: number; regionalRank: number } | null {
+  const T = String(tier || "").toUpperCase();
+  const D = String(div || "I").toUpperCase();
+  const idx = TIER_CUTOFFS.findIndex((c) => c.tier === T && c.div === D);
+  if (idx < 0) return null;
+
+  const floorPct = TIER_CUTOFFS[idx].cumTopPct;            // top% at the floor (0 LP) of this band
+  // The "ceiling" is the floor of the next-better band (idx-1). For the very top
+  // non-apex band (Diamond I), the ceiling is Master's cutoff.
+  const ceilPct = idx > 0 ? TIER_CUTOFFS[idx - 1].cumTopPct : floorPct * 0.5;
+
+  // Within a band, higher LP → better (smaller top%). Interpolate floor→ceil by LP/100.
+  const frac = Math.min(1, Math.max(0, (lp || 0) / 100));
+  const topPercent = floorPct + (ceilPct - floorPct) * frac;
+
+  const pop = REGION_RANKED_POP[normalizeForHost(platform)] ?? DEFAULT_RANKED_POP;
+  const regionalRank = Math.max(1, Math.round((topPercent / 100) * pop));
+
+  return {
+    topPercent: Math.round(topPercent * 100) / 100, // 2 decimals
+    regionalRank,
+  };
+}
+
 /**
  * GET /api/stats/league-rank/:platform/:puuid
  * For apex tiers (Master/GM/Challenger) returns exact regional position + top%.
@@ -1301,27 +1394,38 @@ r.get("/league-rank/:platform/:puuid", async (req, res) => {
   try {
     const { platform, puuid } = req.params as { platform: string; puuid: string };
 
-    // need summonerId for league-v4 entries
-    let summoner: any = null;
-    const tryPlatforms = [platform, ...PROBE_AMERICAS.filter((p) => p !== platform)];
-    for (const pf of tryPlatforms) {
+    // League entries via the reliable by-PUUID endpoint. Probe platforms because a
+    // PUUID may have its summoner profile on a different region than requested.
+    const tryPlatforms = [platform, ...PROBE_AMERICAS.filter((p) => p !== platform), "euw1", "eun1", "tr1", "ru", "kr", "jp1"]
+      .filter((v, i, a) => a.indexOf(v) === i);
+    let entries: any[] = [];
+    let pf = platform;
+    for (const cand of tryPlatforms) {
       try {
-        const s = await getSummonerByPUUID(pf, puuid);
-        if (s?.id) { summoner = { ...s, _pf: pf }; break; }
+        const le = await getLeagueEntriesByPuuid(cand, puuid);
+        if (le && le.length) { entries = le; pf = cand; break; }
       } catch (e: any) {
         if (e?.response?.status === 403) break;
       }
     }
-    if (!summoner?.id) return res.json({ tier: null, regionalRank: null, topPercent: null });
 
-    const pf = summoner._pf as string;
-    const entries = await getLeagueEntriesBySummonerId(pf, summoner.id);
     const solo = (entries || []).find((e: any) => e.queueType === "RANKED_SOLO_5x5");
     if (!solo) return res.json({ tier: null, regionalRank: null, topPercent: null });
 
     const tier = String(solo.tier || "").toUpperCase();
     if (!APEX_BY_TIER[tier]) {
-      // Non-apex: cannot compute exact regional position from public API. Be honest.
+      // Non-apex: estimate top% + regional position from a published-style rank distribution.
+      const est = estimateRankStanding(pf, tier, solo.rank, solo.leaguePoints);
+      if (est) {
+        return res.json({
+          tier,
+          division: solo.rank,
+          lp: solo.leaguePoints,
+          regionalRank: est.regionalRank,
+          topPercent: est.topPercent,
+          estimated: true,
+        });
+      }
       return res.json({ tier, regionalRank: null, topPercent: null });
     }
 
@@ -1341,7 +1445,10 @@ r.get("/league-rank/:platform/:puuid", async (req, res) => {
     ].sort((a, b) => (tierWeight[b._t] - tierWeight[a._t]) || (b.leaguePoints - a.leaguePoints));
 
     const total = ladder.length;
-    const idx = ladder.findIndex((e) => e.summonerId === summoner.id || e.puuid === puuid);
+    const soloSummonerId = (solo as any).summonerId;
+    const idx = ladder.findIndex(
+      (e) => e.puuid === puuid || (soloSummonerId && e.summonerId === soloSummonerId)
+    );
     const regionalRank = idx >= 0 ? idx + 1 : null;
     const topPercent =
       regionalRank != null && total > 0
@@ -1353,6 +1460,124 @@ r.get("/league-rank/:platform/:puuid", async (req, res) => {
     return res.status(e?.response?.status || 500).json({
       message: e?.response?.data?.status?.message || e?.message || "league-rank failed",
       tier: null, regionalRank: null, topPercent: null,
+    });
+  }
+});
+
+// ─── "Mejor jugador" per champion (best-effort, ours) ─────────────────────────
+// From the player's recent matches, for each champion THEY played, find the
+// highest-ranked OTHER participant seen on that same champion. We resolve each
+// candidate's Solo/Dúo rank via the by-puuid league call and cache it hard.
+const TIER_RANK_VALUE: Record<string, number> = {
+  IRON: 0, BRONZE: 1, SILVER: 2, GOLD: 3, PLATINUM: 4, EMERALD: 5,
+  DIAMOND: 6, MASTER: 7, GRANDMASTER: 8, CHALLENGER: 9,
+};
+const DIV_VALUE: Record<string, number> = { IV: 0, III: 1, II: 2, I: 3 };
+function rankScore(tier?: string, div?: string, lp = 0): number {
+  const t = TIER_RANK_VALUE[String(tier || "").toUpperCase()];
+  if (t == null) return -1;
+  const d = DIV_VALUE[String(div || "I").toUpperCase()] ?? 0;
+  return t * 100000 + d * 10000 + (lp || 0);
+}
+
+// Hard cache for a puuid → Solo rank lookup (per platform), to keep lookups cheap.
+const playerRankCache = new Map<string, { data: any; ts: number }>();
+const PLAYER_RANK_TTL = 6 * 60 * 60 * 1000; // 6h
+async function getSoloRankCached(platform: string, puuid: string) {
+  const key = `${platform}:${puuid}`;
+  const c = playerRankCache.get(key);
+  if (c && Date.now() - c.ts < PLAYER_RANK_TTL) return c.data;
+  let solo: any = null;
+  try {
+    const le = await getLeagueEntriesByPuuid(platform, puuid);
+    solo = (le || []).find((e: any) => e.queueType === "RANKED_SOLO_5x5") || null;
+  } catch { solo = null; }
+  playerRankCache.set(key, { data: solo, ts: Date.now() });
+  return solo;
+}
+
+const bestPlayersCache = new Map<string, { data: any; ts: number }>();
+const BEST_PLAYERS_TTL = 30 * 60 * 1000; // 30 min
+
+/**
+ * GET /api/stats/best-players/:platform/:puuid?count=15
+ * -> { byChampion: { [championId]: { gameName, tagLine, puuid, tier, rank, lp } } }
+ * Cheap, cached, best-effort. Champions with no ranked candidate are omitted.
+ */
+r.get("/best-players/:platform/:puuid", async (req, res) => {
+  try {
+    const { platform, puuid } = req.params as { platform: string; puuid: string };
+    const count = Math.min(20, Math.max(5, Number((req.query as any).count) || 15));
+    const regional = platformToRegional(platform);
+
+    const cacheKey = `${platform}:${puuid}:${count}`;
+    const cached = bestPlayersCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < BEST_PLAYERS_TTL) return res.json(cached.data);
+
+    const ids = (await getMatchIdsByPUUID(regional, puuid, count, 0)) || [];
+
+    // 1) Determine which champions the player played + collect OTHER participants per champion.
+    const myChamps = new Set<number>();
+    // championId -> Map<puuid, {gameName, tagLine}>
+    const candidates = new Map<number, Map<string, { gameName: string; tagLine: string }>>();
+
+    for (const id of ids) {
+      const match = await getMatchById(regional, id);
+      const info = (match as any)?.info;
+      if (!info) continue;
+      const me = info.participants.find((p: any) => p.puuid === puuid);
+      if (me) myChamps.add(Number(me.championId));
+      for (const p of info.participants as any[]) {
+        if (p.puuid === puuid || !p.puuid) continue;
+        const cid = Number(p.championId);
+        if (!candidates.has(cid)) candidates.set(cid, new Map());
+        candidates.get(cid)!.set(p.puuid, {
+          gameName: p.riotIdGameName || p.summonerName || "Invocador",
+          tagLine: p.riotIdTagline || p.riotIdTagLine || "",
+        });
+      }
+    }
+
+    // 2) For each champion the player played, rank the candidates seen on it.
+    // Cap lookups overall to stay cheap.
+    const MAX_LOOKUPS = 40;
+    let lookups = 0;
+    const byChampion: Record<number, any> = {};
+
+    for (const cid of myChamps) {
+      const pool = candidates.get(cid);
+      if (!pool || pool.size === 0) continue;
+      let best: any = null;
+      let bestScore = -1;
+      for (const [cPuuid, names] of pool) {
+        if (lookups >= MAX_LOOKUPS) break;
+        lookups++;
+        const solo = await getSoloRankCached(platform, cPuuid);
+        if (!solo) continue;
+        const score = rankScore(solo.tier, solo.rank, solo.leaguePoints);
+        if (score > bestScore) {
+          bestScore = score;
+          best = {
+            puuid: cPuuid,
+            gameName: names.gameName,
+            tagLine: names.tagLine,
+            tier: solo.tier,
+            rank: solo.rank,
+            lp: solo.leaguePoints,
+          };
+        }
+      }
+      if (best) byChampion[cid] = best;
+      if (lookups >= MAX_LOOKUPS) break;
+    }
+
+    const out = { byChampion };
+    bestPlayersCache.set(cacheKey, { data: out, ts: Date.now() });
+    return res.json(out);
+  } catch (e: any) {
+    return res.status(e?.response?.status || 500).json({
+      message: e?.response?.data?.status?.message || e?.message || "best-players failed",
+      byChampion: {},
     });
   }
 });

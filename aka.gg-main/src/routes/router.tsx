@@ -2,10 +2,12 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/features/auth/useAuth';
+import KataLoader from '@/components/KataLoader';
 
 // Eagerly load the two most visited pages
 import Home        from '@/pages/Home';
-import SummonerPage from '@/pages/SummonerPage';
+// ProfilePage is the unified summoner profile used for BOTH /stats and /profile.
+import ProfilePage from '@/pages/ProfilePage';
 
 // Lazy-load everything else (split into separate chunks)
 const Login                = lazy(() => import('@/pages/Login'));
@@ -18,15 +20,11 @@ const TournamentLivePage   = lazy(() => import('@/pages/TournamentLivePage'));
 const Dashboard            = lazy(() => import('@/pages/Dashboard'));
 const NotFound             = lazy(() => import('@/pages/NotFound'));
 const MatchDetailPage      = lazy(() => import('@/pages/MatchDetailPage'));
-const ProfilePage          = lazy(() => import('@/pages/ProfilePage'));
 
 function PageLoader() {
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 rounded-full border-2 border-red-600 border-t-transparent animate-spin" />
-        <span className="text-gray-600 text-xs uppercase tracking-widest">Cargando...</span>
-      </div>
+    <div className="min-h-screen bg-[#08080b] flex items-center justify-center">
+      <KataLoader size={220} />
     </div>
   );
 }
@@ -44,7 +42,8 @@ export const AppRouter = () => (
     <Routes>
       {/* Eager */}
       <Route path="/"                         element={<Home />} />
-      <Route path="/stats/:region/:riotId"    element={<SummonerPage />} />
+      {/* Unified profile: /stats and /profile both render the new ProfilePage. */}
+      <Route path="/stats/:region/:name"      element={<ProfilePage />} />
       <Route path="/profile/:region/:name"    element={<ProfilePage />} />
 
       {/* Lazy public */}

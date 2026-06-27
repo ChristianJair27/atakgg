@@ -298,3 +298,33 @@ export async function getLeagueEntriesBySummonerId(platform: Platform | string, 
     rethrowNice(e, `${key} league-v4 entries by-summoner`);
   }
 }
+
+export type LeagueEntry = {
+  queueType: string;     // "RANKED_SOLO_5x5" | "RANKED_FLEX_SR"
+  tier: string;
+  rank: string;
+  leaguePoints: number;
+  wins: number;
+  losses: number;
+  summonerId?: string;
+  puuid?: string;
+  hotStreak?: boolean;
+  veteran?: boolean;
+  freshBlood?: boolean;
+  inactive?: boolean;
+};
+
+// ===== League-V4 (PLATFORM): entries by PUUID (current, reliable path) =====
+export async function getLeagueEntriesByPuuid(platform: Platform | string, puuid: string): Promise<LeagueEntry[]> {
+  const key = normalizePlatform(platform as string);
+  const base = PLATFORM_HOST[key];
+  if (!base) return [];
+  const url = `${base}/lol/league/v4/entries/by-puuid/${encodeURIComponent(puuid)}`;
+  try {
+    const { data } = await riot.get(url);
+    return (data || []) as LeagueEntry[];
+  } catch (e: any) {
+    if (e?.response?.status === 404) return [];
+    rethrowNice(e, `${key} league-v4 entries by-puuid`);
+  }
+}

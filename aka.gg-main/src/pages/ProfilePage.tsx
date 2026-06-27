@@ -13,6 +13,7 @@ import {
   fmtNumber,
 } from '@/lib/dataDragon';
 import { RefreshCw, Star, Search, ChevronDown } from 'lucide-react';
+import { KataLoaderOverlay } from '@/components/KataLoader';
 
 // ─── Brand tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -47,13 +48,35 @@ const normalizePlatform = (s?: string): Platform => {
   return m[(s || '').toLowerCase()] || (s as Platform) || 'la1';
 };
 
-// Route param `:name` arrives as "Name-TAG"; split on the LAST hyphen so names
-// containing hyphens survive.
-const splitNameTag = (raw?: string) => {
-  const s = decodeURIComponent(raw || '');
+// Default tagLine per platform when the route omits one (bare name). Riot accepts
+// these as sensible regional defaults for resolution.
+const DEFAULT_TAG: Record<Platform, string> = {
+  la1: 'LAN', la2: 'LAS', na1: 'NA1', br1: 'BR1', oc1: 'OCE',
+  euw1: 'EUW', eun1: 'EUNE', tr1: 'TR1', ru: 'RU', jp1: 'JP1', kr: 'KR1',
+};
+
+// Route param `:name` may arrive as "Name#TAG" (from /stats links), "Name-TAG"
+// (from /profile links), or a bare "Name" (no tag). Parse all three. When no tag
+// is present we fall back to a per-region default so resolution can still work.
+const splitNameTag = (raw: string | undefined, platform: Platform) => {
+  const s = decodeURIComponent(raw || '').trim();
+  if (!s) return { gameName: '', tagLine: '' };
+  // Prefer an explicit '#' separator (canonical Riot ID).
+  if (s.includes('#')) {
+    const i = s.indexOf('#');
+    return { gameName: s.slice(0, i).trim(), tagLine: s.slice(i + 1).trim() };
+  }
+  // Otherwise treat the LAST hyphen as the tag separator (names may contain '-').
   const i = s.lastIndexOf('-');
-  if (i === -1) return { gameName: s, tagLine: '' };
-  return { gameName: s.slice(0, i), tagLine: s.slice(i + 1) };
+  if (i !== -1) {
+    const candidateTag = s.slice(i + 1).trim();
+    // A real tag is short & alphanumeric; if it looks like part of the name, ignore.
+    if (candidateTag.length >= 2 && candidateTag.length <= 5 && /^[A-Za-z0-9]+$/.test(candidateTag)) {
+      return { gameName: s.slice(0, i).trim(), tagLine: candidateTag };
+    }
+  }
+  // Bare name → default regional tag.
+  return { gameName: s, tagLine: DEFAULT_TAG[platform] || 'NA1' };
 };
 
 // Build the profile route for a co-player / participant.
@@ -281,7 +304,7 @@ export default function ProfilePage() {
 
   const platform = normalizePlatform(region);
   const continent = platformToContinent(platform);
-  const { gameName, tagLine } = useMemo(() => splitNameTag(name), [name]);
+  const { gameName, tagLine } = useMemo(() => splitNameTag(name, platform), [name, platform]);
 
   const [puuid, setPuuid] = useState<string>();
   const [resolveErr, setResolveErr] = useState(false);
@@ -296,6 +319,7 @@ export default function ProfilePage() {
   const [leagueRank, setLeagueRank] = useState<{ regionalRank: number | null; topPercent: number | null } | null>(null);
   const [teammates, setTeammates] = useState<any[] | null>(null);
   const [teammatesLoading, setTeammatesLoading] = useState(true);
+  const [bestPlayers, setBestPlayers] = useState<Record<string, any> | null>(null);
 
   const champByKey = champs?.byKey;
 
@@ -375,6 +399,18 @@ export default function ProfilePage() {
       .finally(() => setTeammatesLoading(false));
     return () => ac.abort();
   }, [puuid, continent, refreshKey]);
+
+  // "Mejor jugador" per champion (best-effort, ours; cached server-side)
+  useEffect(() => {
+    if (!puuid) return;
+    const ac = new AbortController();
+    setBestPlayers(null);
+    axiosInstance
+      .get(`/api/stats/best-players/${platform}/${puuid}`, { params: { count: 15 }, signal: ac.signal })
+      .then(({ data }) => setBestPlayers(data?.byChampion || {}))
+      .catch(() => setBestPlayers({}));
+    return () => ac.abort();
+  }, [puuid, platform, refreshKey]);
 
   const loadMore = async () => {
     setLoadingMore(true);
@@ -483,6 +519,9 @@ export default function ProfilePage() {
           ${C.bg}; }
         @media (max-width: 960px){ .atak-grid{ grid-template-columns: 1fr !important; } }
       `}</style>
+
+      {/* 3D Katarina loader while resolving the invocador (initial load). */}
+      {!puuid && !resolveErr && <KataLoaderOverlay show label="Cargando invocador" />}
 
       <TopBar region={platform} />
 
@@ -624,7 +663,7 @@ export default function ProfilePage() {
                 champByKey={champByKey} region={platform}
               />
               <RolePerformance perf={rolePerf} loading={matchesLoading && !matches.length} />
-              <ChampionsTable rows={champRows} champByKey={champByKey} loading={matchesLoading && !matches.length} />
+              <ChampionsTable rows={champRows} champByKey={champByKey} loading={matchesLoading && !matches.length} bestPlayers={bestPlayers} region={platform} />
             </div>
           </div>
         </div>
@@ -1074,7 +1113,10 @@ function RolePerformance({ perf, loading }: { perf: Record<Role, { games: number
 }
 
 // ─── Champions table ────────────────────────────────────────────────────────
-function ChampionsTable({ rows, champByKey, loading }: { rows: any[]; champByKey: any; loading: boolean }) {
+function ChampionsTable({ rows, champByKey, loading, bestPlayers, region }: {
+  rows: any[]; champByKey: any; loading: boolean;
+  bestPlayers?: Record<string, any> | null; region: string;
+}) {
   return (
     <Panel style={{ padding: 18 }}>
       <SectionTitle>Campeones · Solo/Dúo</SectionTitle>
@@ -1091,6 +1133,19 @@ function ChampionsTable({ rows, champByKey, loading }: { rows: any[]; champByKey
           </div>
           {rows.map((r) => {
             const c = champByKey?.[String(r.id)];
+            const best = bestPlayers?.[String(r.id)];
+            const bestTier = best?.tier ? `${best.tier[0]}${best.tier.slice(1).toLowerCase()} ${best.rank || ''}`.trim() : null;
+            const bestHref = best ? profileHref(region, best.gameName, best.tagLine) : null;
+            const bestInner = best ? (
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, minWidth: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.redHover, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {best.gameName}
+                </span>
+                {bestTier && <span style={{ fontSize: 10, color: C.gold }}>{bestTier}</span>}
+              </div>
+            ) : (
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>—</span>
+            );
             return (
               <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 1.1fr 0.9fr', alignItems: 'center', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -1101,7 +1156,9 @@ function ChampionsTable({ rows, champByKey, loading }: { rows: any[]; champByKey
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
                   {r.games}P · <span style={{ color: r.wr >= 50 ? C.win : C.loss, fontWeight: 700 }}>{r.wr}%</span>
                 </span>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>—</span>
+                {bestHref ? (
+                  <Link to={bestHref} style={{ textDecoration: 'none', minWidth: 0 }} title={`Mejor ${c?.name || ''}: ${best.gameName}`}>{bestInner}</Link>
+                ) : bestInner}
               </div>
             );
           })}
