@@ -3,7 +3,7 @@
 // New page; reuses the existing backend (/api/stats/*) via axiosInstance,
 // the useChampions hook, and the DDragon icon helpers in src/lib/dataDragon.ts.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { axiosInstance } from '@/lib/axios';
 import { useChampions } from '@/hooks/use-ddragon';
 import {
@@ -54,6 +54,15 @@ const splitNameTag = (raw?: string) => {
   const i = s.lastIndexOf('-');
   if (i === -1) return { gameName: s, tagLine: '' };
   return { gameName: s.slice(0, i), tagLine: s.slice(i + 1) };
+};
+
+// Build the profile route for a co-player / participant.
+const profileHref = (region: string, gameName?: string, tagLine?: string) => {
+  const g = (gameName || '').trim();
+  const t = (tagLine || '').trim();
+  if (!g) return null;
+  const slug = t ? `${encodeURIComponent(g)}-${encodeURIComponent(t)}` : encodeURIComponent(g);
+  return `/profile/${region}/${slug}`;
 };
 
 // ─── Queue & role maps ──────────────────────────────────────────────────────
@@ -284,6 +293,9 @@ export default function ProfilePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState<'all' | 420 | 440 | 450>('all');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [leagueRank, setLeagueRank] = useState<{ regionalRank: number | null; topPercent: number | null } | null>(null);
+  const [teammates, setTeammates] = useState<any[] | null>(null);
+  const [teammatesLoading, setTeammatesLoading] = useState(true);
 
   const champByKey = champs?.byKey;
 
@@ -337,6 +349,32 @@ export default function ProfilePage() {
     fetchMatches(count).finally(() => setMatchesLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [puuid, refreshKey]);
+
+  // League regional rank + top% (apex tiers only; null otherwise — honest)
+  useEffect(() => {
+    if (!puuid) return;
+    const ac = new AbortController();
+    setLeagueRank(null);
+    axiosInstance
+      .get(`/api/stats/league-rank/${platform}/${puuid}`, { signal: ac.signal })
+      .then(({ data }) => setLeagueRank({ regionalRank: data?.regionalRank ?? null, topPercent: data?.topPercent ?? null }))
+      .catch(() => {});
+    return () => ac.abort();
+  }, [puuid, platform, refreshKey]);
+
+  // Recently played with
+  useEffect(() => {
+    if (!puuid) return;
+    const ac = new AbortController();
+    setTeammatesLoading(true);
+    setTeammates(null);
+    axiosInstance
+      .get(`/api/stats/recent-teammates/${continent}/${puuid}`, { params: { count: 20 }, signal: ac.signal })
+      .then(({ data }) => setTeammates(data?.players || []))
+      .catch(() => setTeammates([]))
+      .finally(() => setTeammatesLoading(false));
+    return () => ac.abort();
+  }, [puuid, continent, refreshKey]);
 
   const loadMore = async () => {
     setLoadingMore(true);
@@ -530,7 +568,7 @@ export default function ProfilePage() {
                                   clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
                                   overflow: 'hidden', background: '#000',
                                 }}>
-                                  {c?.image && <img src={c.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                                  {c?.image && <img src={c.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                                 </div>
                               </div>
                               <span style={{ fontFamily: FONT_COND, fontSize: 10, fontWeight: 700, color: col }}>{m.level}</span>
@@ -566,6 +604,7 @@ export default function ProfilePage() {
               <PersonalScore
                 solo={soloRank} flex={flexRank}
                 loading={summaryLoading && !summary}
+                leagueRank={leagueRank}
               />
               <RecentGames
                 matches={filtered} loading={matchesLoading && !matches.length}
@@ -573,12 +612,17 @@ export default function ProfilePage() {
                 champByKey={champByKey} puuid={puuid}
                 onLoadMore={loadMore} loadingMore={loadingMore}
                 hasMore={matches.length >= count}
+                region={platform} continent={continent}
               />
             </div>
 
             {/* RIGHT */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
               <PlayerTags tags={tags} loading={matchesLoading && !matches.length} />
+              <RecentlyPlayedWith
+                players={teammates} loading={teammatesLoading}
+                champByKey={champByKey} region={platform}
+              />
               <RolePerformance perf={rolePerf} loading={matchesLoading && !matches.length} />
               <ChampionsTable rows={champRows} champByKey={champByKey} loading={matchesLoading && !matches.length} />
             </div>
@@ -590,7 +634,10 @@ export default function ProfilePage() {
 }
 
 // ─── Personal score (featured Solo/Dúo) ─────────────────────────────────────
-function PersonalScore({ solo, flex, loading }: { solo: RankEntry | null; flex: RankEntry | null; loading: boolean }) {
+function PersonalScore({ solo, flex, loading, leagueRank }: {
+  solo: RankEntry | null; flex: RankEntry | null; loading: boolean;
+  leagueRank: { regionalRank: number | null; topPercent: number | null } | null;
+}) {
   return (
     <Panel style={{ padding: 18 }}>
       <SectionTitle>Puntuación personal</SectionTitle>
@@ -602,7 +649,7 @@ function PersonalScore({ solo, flex, loading }: { solo: RankEntry | null; flex: 
           </div>
         </div>
       ) : solo ? (
-        <FeaturedRank rank={solo} />
+        <FeaturedRank rank={solo} leagueRank={leagueRank} />
       ) : (
         <Unranked label="Solo/Dúo sin clasificar" />
       )}
@@ -622,7 +669,10 @@ function PersonalScore({ solo, flex, loading }: { solo: RankEntry | null; flex: 
   );
 }
 
-function FeaturedRank({ rank }: { rank: RankEntry }) {
+function FeaturedRank({ rank, leagueRank }: {
+  rank: RankEntry;
+  leagueRank?: { regionalRank: number | null; topPercent: number | null } | null;
+}) {
   const wins = rank.wins || 0, losses = rank.losses || 0;
   const total = wins + losses;
   const wr = total ? Math.round((wins / total) * 100) : 0;
@@ -635,7 +685,8 @@ function FeaturedRank({ rank }: { rank: RankEntry }) {
           {tierName} {rank.rank}
         </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
-          <span>Rank regional: —</span><span>Top %: —</span>
+          <span>Rank regional: {leagueRank?.regionalRank != null ? `#${fmtNumber(leagueRank.regionalRank)}` : '—'}</span>
+          <span>Top %: {leagueRank?.topPercent != null ? `${leagueRank.topPercent}%` : '—'}</span>
         </div>
         <div style={{ fontFamily: FONT_COND, fontWeight: 700, fontSize: 16, color: '#fff', marginTop: 6 }}>{rank.lp} LP</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
@@ -684,11 +735,12 @@ function Unranked({ label }: { label: string }) {
 
 // ─── Recent games ───────────────────────────────────────────────────────────
 function RecentGames({
-  matches, loading, recap, filter, setFilter, champByKey, puuid, onLoadMore, loadingMore, hasMore,
+  matches, loading, recap, filter, setFilter, champByKey, puuid, onLoadMore, loadingMore, hasMore, region, continent,
 }: {
   matches: any[]; loading: boolean; recap: any;
   filter: 'all' | 420 | 440 | 450; setFilter: (f: any) => void;
   champByKey: any; puuid?: string; onLoadMore: () => void; loadingMore: boolean; hasMore: boolean;
+  region: string; continent: string;
 }) {
   const chips: { label: string; val: 'all' | 420 | 440 | 450 }[] = [
     { label: 'Todas', val: 'all' }, { label: 'Solo/Dúo', val: 420 },
@@ -750,7 +802,7 @@ function RecentGames({
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {matches.map((m) => <MatchRowMini key={m.matchId} m={m} champByKey={champByKey} puuid={puuid} />)}
+          {matches.map((m) => <MatchRowMini key={m.matchId} m={m} champByKey={champByKey} puuid={puuid} region={region} continent={continent} />)}
         </div>
       )}
 
@@ -780,7 +832,10 @@ function timeAgo(ms?: number) {
   return `hace ${d}d`;
 }
 
-function MatchRowMini({ m, champByKey, puuid }: { m: any; champByKey: any; puuid?: string }) {
+function MatchRowMini({ m, champByKey, puuid, region, continent }: {
+  m: any; champByKey: any; puuid?: string; region: string; continent: string;
+}) {
+  const navigate = useNavigate();
   const c = champByKey?.[String(m.championId)];
   const minutes = Math.max(1, Math.floor((m.gameDuration || 0) / 60));
   const cs = m.cs ?? 0;
@@ -796,19 +851,27 @@ function MatchRowMini({ m, champByKey, puuid }: { m: any; champByKey: any; puuid
   const team2 = (m.teamParticipants || []).filter((p: any) => p.teamId !== (myTeamId ?? 100));
   const isSR = (m.teamParticipants || []).length === 10;
 
+  const openDetail = () =>
+    navigate(`/match/${continent}/${m.matchId}`, { state: { puuid, region } });
+
   return (
     <div
+      onClick={openDetail}
+      role="button"
+      title="Ver detalle de la partida"
       style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
         borderRadius: 10, border: `1px solid ${C.border}`,
         borderLeft: `4px solid ${win ? C.win : C.loss}`,
         background: win ? 'rgba(47,191,138,0.05)' : 'rgba(255,90,100,0.05)',
-        flexWrap: 'wrap',
+        flexWrap: 'wrap', cursor: 'pointer', transition: 'background .15s',
       }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = win ? 'rgba(47,191,138,0.1)' : 'rgba(255,90,100,0.1)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = win ? 'rgba(47,191,138,0.05)' : 'rgba(255,90,100,0.05)')}
     >
       {/* Champ + spells */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <img src={c?.image} alt="" style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', border: `1px solid ${C.border}` }} />
+        <img src={c?.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', border: `1px solid ${C.border}` }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {spells.slice(0, 2).map((id, i) => {
             const url = spellIcon(id);
@@ -849,18 +912,26 @@ function MatchRowMini({ m, champByKey, puuid }: { m: any; champByKey: any; puuid
               {teamArr.slice(0, 5).map((p: any, i: number) => {
                 const pc = champByKey?.[String(p.championId)];
                 const mine = p.puuid === puuid;
-                return (
+                const href = profileHref(region, p.gameName ?? p.summonerName, p.tagLine);
+                const img = (
                   <img
-                    key={i}
                     src={pc?.image}
                     alt=""
                     title={p.summonerName}
+                    onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
                     style={{
                       width: 16, height: 16, borderRadius: 3, objectFit: 'cover',
                       opacity: ti === 0 ? 1 : 0.4,
                       outline: mine ? `1px solid ${C.gold}` : 'none',
                     }}
                   />
+                );
+                return href ? (
+                  <Link key={i} to={href} onClick={(e) => e.stopPropagation()} title={`Ver perfil de ${p.summonerName}`}>
+                    {img}
+                  </Link>
+                ) : (
+                  <span key={i}>{img}</span>
                 );
               })}
             </div>
@@ -887,6 +958,76 @@ function PlayerTags({ tags, loading }: { tags: string[]; loading: boolean }) {
               {t}
             </span>
           ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// ─── Recently played with ───────────────────────────────────────────────────
+function RecentlyPlayedWith({ players, loading, champByKey, region }: {
+  players: any[] | null; loading: boolean; champByKey: any; region: string;
+}) {
+  return (
+    <Panel style={{ padding: 18 }}>
+      <SectionTitle>Jugó recientemente con</SectionTitle>
+      {loading && !players ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={40} style={{ borderRadius: 8 }} />)}
+        </div>
+      ) : !players || players.length === 0 ? (
+        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+          Sin compañeros recurrentes en las últimas partidas.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {players.map((p) => {
+            const href = profileHref(region, p.gameName, p.tagLine);
+            const wr = p.winRate;
+            const topCid = p.champions?.[0]?.championId;
+            const tc = topCid != null ? champByKey?.[String(topCid)] : null;
+            const inner = (
+              <div
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                  borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: 'rgba(255,255,255,0.025)', transition: 'background .15s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(225,36,46,0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
+              >
+                {tc?.image ? (
+                  <img src={tc.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+                    style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 30, height: 30, borderRadius: 6, background: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.gameName}<span style={{ color: 'rgba(255,255,255,0.35)' }}>{p.tagLine ? ` #${p.tagLine}` : ''}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
+                    {p.games} {p.games === 1 ? 'partida' : 'partidas'} juntos
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  {wr != null ? (
+                    <div style={{ fontFamily: FONT_COND, fontWeight: 800, fontSize: 14, color: wr >= 50 ? C.win : C.loss }}>{wr}%</div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }}>—</div>
+                  )}
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                    {p.asAlly}A · {p.asEnemy}E
+                  </div>
+                </div>
+              </div>
+            );
+            return href ? (
+              <Link key={p.puuid} to={href} style={{ textDecoration: 'none' }}>{inner}</Link>
+            ) : (
+              <div key={p.puuid}>{inner}</div>
+            );
+          })}
         </div>
       )}
     </Panel>
@@ -953,7 +1094,7 @@ function ChampionsTable({ rows, champByKey, loading }: { rows: any[]; champByKey
             return (
               <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 1.1fr 0.9fr', alignItems: 'center', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  <img src={c?.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                  <img src={c?.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c?.name || r.id}</span>
                 </div>
                 <span style={{ fontFamily: FONT_KDA, fontSize: 13, fontWeight: 700, color: Number(r.kda) >= 3 ? C.gold : '#fff' }}>{r.kda}</span>

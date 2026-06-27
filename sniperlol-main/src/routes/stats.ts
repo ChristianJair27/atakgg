@@ -11,6 +11,7 @@ import {
   getMatchIdsByPUUID,
   getMatchById,
   getLiveGame,
+  PLATFORM_HOST,
 } from "../services/riot.js";
 
 const r = Router();
@@ -146,6 +147,11 @@ r.get("/summary/:platform/:puuid", async (req, res) => {
         break;
       }
     }
+  }
+
+  // Forward-only season snapshot (best-effort, never blocks the response)
+  if (rank.length) {
+    upsertRankedSnapshot(puuid, rank as any).catch(() => {});
   }
 
   return res.json({
@@ -328,6 +334,8 @@ r.get("/matches/:regional/:matchId", async (req, res) => {
   teamId: p.teamId,
   championId: p.championId,
   summonerName: p.riotIdGameName || p.summonerName || "Invocador",
+  gameName: p.riotIdGameName || p.summonerName || "",
+  tagLine: p.riotIdTagline || p.riotIdTagLine || "",
   puuid: p.puuid,
   kills: p.kills,
   deaths: p.deaths,
@@ -863,6 +871,119 @@ r.delete('/profile-comments/:id', requireAuth, async (req: any, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Match stats (rich, MatchStatsResponse shape) ─────────────────────────────
+// Self-contained parser mirroring the tournament stats shape so the frontend's
+// <MatchStatsDetail /> (charts) can render solo matches too.
+function ms_parseParticipant(p: any, gameDuration: number) {
+  const cs = (p.totalMinionsKilled ?? 0) + (p.neutralMinionsKilled ?? 0);
+  const mins = Math.max(1, gameDuration / 60);
+  return {
+    puuid:             p.puuid,
+    summonerName:      p.riotIdGameName || p.summonerName || "Invocador",
+    tagLine:           p.riotIdTagline || p.riotIdTagLine || "",
+    championName:      p.championName,
+    championId:        p.championId,
+    champLevel:        p.champLevel,
+    teamId:            p.teamId,
+    win:               p.win,
+    kills:             p.kills ?? 0,
+    deaths:            p.deaths ?? 0,
+    assists:           p.assists ?? 0,
+    kda:               p.deaths === 0 ? (p.kills + p.assists) : ((p.kills + p.assists) / p.deaths),
+    cs,
+    csPerMin:          Math.round((cs / mins) * 10) / 10,
+    goldEarned:        p.goldEarned ?? 0,
+    totalDamageDealt:  p.totalDamageDealtToChampions ?? 0,
+    physicalDamage:    p.physicalDamageDealtToChampions ?? 0,
+    magicDamage:       p.magicDamageDealtToChampions ?? 0,
+    trueDamage:        p.trueDamageDealtToChampions ?? 0,
+    damageTaken:       p.totalDamageTaken ?? 0,
+    healingDone:       p.totalHeal ?? 0,
+    visionScore:       p.visionScore ?? 0,
+    wardsPlaced:       p.wardsPlaced ?? 0,
+    wardsKilled:       p.wardsKilled ?? 0,
+    items:             [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6].map(Number),
+    summoner1Id:       p.summoner1Id ?? 0,
+    summoner2Id:       p.summoner2Id ?? 0,
+    perks: {
+      keystoneId:       p.perks?.styles?.[0]?.selections?.[0]?.perk ?? 0,
+      secondaryStyleId: p.perks?.styles?.[1]?.style ?? 0,
+    },
+    pentaKills:        p.pentaKills ?? 0,
+    quadraKills:       p.quadraKills ?? 0,
+    tripleKills:       p.tripleKills ?? 0,
+    doubleKills:       p.doubleKills ?? 0,
+    firstBloodKill:    p.firstBloodKill ?? false,
+    teamPosition:      p.teamPosition || p.role || "",
+    largestMultiKill:  p.largestMultiKill ?? 0,
+    killingSprees:     p.killingSprees ?? 0,
+    totalTimeCCDealt:  p.totalTimeCCDealt ?? 0,
+    challenges: p.challenges ? {
+      killParticipation:    p.challenges.killParticipation,
+      kda:                  p.challenges.kda,
+      damagePerMinute:      p.challenges.damagePerMinute,
+      goldPerMinute:        p.challenges.goldPerMinute,
+      visionScorePerMinute: p.challenges.visionScorePerMinute,
+      soloKills:            p.challenges.soloKills,
+    } : undefined,
+  };
+}
+
+function ms_parseTeamObjectives(team: any) {
+  const obj = team?.objectives ?? {};
+  return {
+    win:             team?.win ?? false,
+    bans:            team?.bans ?? [],
+    baronKills:      obj.baron?.kills ?? 0,
+    dragonKills:     obj.dragon?.kills ?? 0,
+    towerKills:      obj.tower?.kills ?? 0,
+    inhibitorKills:  obj.inhibitor?.kills ?? 0,
+    riftHeraldKills: obj.riftHerald?.kills ?? 0,
+    firstBaron:      obj.baron?.first ?? false,
+    firstDragon:     obj.dragon?.first ?? false,
+    firstTower:      obj.tower?.first ?? false,
+  };
+}
+
+/**
+ * GET /api/stats/match-stats/:regional/:matchId
+ * -> MatchStatsResponse (blueTeam/redTeam/objectives) for <MatchStatsDetail/>.
+ */
+r.get("/match-stats/:regional/:matchId", async (req, res) => {
+  try {
+    const { regional, matchId } = req.params as { regional: string; matchId: string };
+    const data = await getMatchById(regional, matchId);
+    if (!data?.info) return res.status(404).json({ message: "Match not found" });
+
+    const info = data.info;
+    const dur = info.gameDuration as number;
+    const participants = (info.participants as any[]).map((p) => ms_parseParticipant(p, dur));
+    const blueTeam = participants.filter((p) => p.teamId === 100);
+    const redTeam = participants.filter((p) => p.teamId === 200);
+    const blueRaw = (info.teams as any[])?.find((t) => t.teamId === 100);
+    const redRaw = (info.teams as any[])?.find((t) => t.teamId === 200);
+    const winnerTeamId = (info.teams as any[])?.find((t) => t.win)?.teamId;
+
+    return res.json({
+      matchId,
+      gameId: info.gameId,
+      gameDuration: dur,
+      gameStartTimestamp: info.gameStartTimestamp,
+      gameEndTimestamp: info.gameEndTimestamp,
+      gameMode: info.gameMode,
+      queueId: info.queueId,
+      isComplete: !!info.gameEndTimestamp,
+      winner: winnerTeamId === 100 ? "blue" : winnerTeamId === 200 ? "red" : null,
+      blueTeam,
+      redTeam,
+      blueObjectives: ms_parseTeamObjectives(blueRaw),
+      redObjectives: ms_parseTeamObjectives(redRaw),
+    });
+  } catch (e: any) {
+    return res.status(e?.response?.status || 500).json({ message: e?.message || "match-stats failed" });
+  }
+});
+
 r.get("/match-timeline/:regional/:matchId", async (req, res) => {
   try {
     const { regional, matchId } = req.params as { regional: string; matchId: string };
@@ -1038,6 +1159,269 @@ r.get("/live/:platform/:puuid", async (req, res) => {
     const st = e?.response?.status;
     if (st === 404) return res.status(204).send(); // not in game
     return res.status(st || 500).json({ error: e?.message || "live check failed" });
+  }
+});
+
+// ─── Recently played with ─────────────────────────────────────────────────────
+type TeammateAgg = {
+  puuid: string;
+  gameName: string;
+  tagLine: string;
+  games: number;      // total games seen together (ally or enemy)
+  asAlly: number;
+  asEnemy: number;
+  togetherWins: number; // games where co-player was an ALLY and the team won
+  champs: Record<number, number>;
+};
+const teammatesCache = new Map<string, { data: any; ts: number }>();
+const TEAMMATES_TTL = 10 * 60 * 1000; // 10 min
+
+/**
+ * GET /api/stats/recent-teammates/:regional/:puuid?count=20
+ * Aggregates other participants across the player's recent matches.
+ */
+r.get("/recent-teammates/:regional/:puuid", async (req, res) => {
+  try {
+    const { regional, puuid } = req.params as { regional: string; puuid: string };
+    const count = Math.min(30, Math.max(5, Number((req.query as any).count) || 20));
+
+    const cacheKey = `${regional}:${puuid}:${count}`;
+    const cached = teammatesCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < TEAMMATES_TTL) return res.json(cached.data);
+
+    const ids = (await getMatchIdsByPUUID(regional, puuid, count, 0)) || [];
+
+    const agg = new Map<string, TeammateAgg>();
+    for (const id of ids) {
+      const match = await getMatchById(regional, id);
+      const info = (match as any)?.info;
+      if (!info) continue;
+      const me = info.participants.find((p: any) => p.puuid === puuid);
+      if (!me) continue;
+
+      for (const p of info.participants as any[]) {
+        if (p.puuid === puuid || !p.puuid) continue;
+        const row =
+          agg.get(p.puuid) ||
+          ({
+            puuid: p.puuid,
+            gameName: p.riotIdGameName || p.summonerName || "Invocador",
+            tagLine: p.riotIdTagline || p.riotIdTagLine || "",
+            games: 0, asAlly: 0, asEnemy: 0, togetherWins: 0, champs: {},
+          } as TeammateAgg);
+
+        row.games += 1;
+        const sameTeam = p.teamId === me.teamId;
+        if (sameTeam) {
+          row.asAlly += 1;
+          if (me.win) row.togetherWins += 1;
+        } else {
+          row.asEnemy += 1;
+        }
+        // refresh name in case earlier games had it blank
+        if (p.riotIdGameName) row.gameName = p.riotIdGameName;
+        if (p.riotIdTagline) row.tagLine = p.riotIdTagline;
+        row.champs[p.championId] = (row.champs[p.championId] || 0) + 1;
+        agg.set(p.puuid, row);
+      }
+    }
+
+    const players = Array.from(agg.values())
+      .filter((t) => t.games >= 2)
+      .sort((a, b) => b.games - a.games)
+      .slice(0, 12)
+      .map((t) => {
+        const topChamps = Object.entries(t.champs)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([cid, n]) => ({ championId: Number(cid), games: n }));
+        return {
+          puuid: t.puuid,
+          gameName: t.gameName,
+          tagLine: t.tagLine,
+          games: t.games,
+          asAlly: t.asAlly,
+          asEnemy: t.asEnemy,
+          togetherWins: t.togetherWins, // wins while on the same team
+          // win% computed over allied games (only those are "together" outcomes)
+          winRate: t.asAlly ? Math.round((t.togetherWins / t.asAlly) * 100) : null,
+          champions: topChamps,
+        };
+      });
+
+    const out = { sampleSize: ids.length, players };
+    teammatesCache.set(cacheKey, { data: out, ts: Date.now() });
+    return res.json(out);
+  } catch (e: any) {
+    return res.status(e?.response?.status || 500).json({
+      message: e?.response?.data?.status?.message || e?.message || "recent-teammates failed",
+    });
+  }
+});
+
+// ─── Ranked regional rank + top% (apex tiers only, real data) ──────────────────
+const APEX_BY_TIER: Record<string, string> = {
+  CHALLENGER: "challengerleagues",
+  GRANDMASTER: "grandmasterleagues",
+  MASTER: "masterleagues",
+};
+const apexCache = new Map<string, { data: any[]; ts: number }>();
+const APEX_TTL = 15 * 60 * 1000;
+
+async function getApexLeague(platform: string, tier: string): Promise<any[]> {
+  const path = APEX_BY_TIER[tier];
+  if (!path) return [];
+  const key = `${platform}:${tier}`;
+  const c = apexCache.get(key);
+  if (c && Date.now() - c.ts < APEX_TTL) return c.data;
+  const base = PLATFORM_HOST[normalizeForHost(platform)];
+  if (!base || !RIOT_KEY) return [];
+  const { data } = await riotGet<any>(
+    `${base}/lol/league/v4/${path}/by-queue/RANKED_SOLO_5x5`,
+    { headers: { "X-Riot-Token": RIOT_KEY } }
+  );
+  const entries = (data?.entries || []) as any[];
+  apexCache.set(key, { data: entries, ts: Date.now() });
+  return entries;
+}
+
+function normalizeForHost(p: string): string {
+  const x = (p || "").toLowerCase().trim();
+  if (x === "lan") return "la1";
+  if (x === "las") return "la2";
+  return x;
+}
+
+/**
+ * GET /api/stats/league-rank/:platform/:puuid
+ * For apex tiers (Master/GM/Challenger) returns exact regional position + top%.
+ * For everything else returns { regionalRank: null, topPercent: null } (honest).
+ */
+r.get("/league-rank/:platform/:puuid", async (req, res) => {
+  try {
+    const { platform, puuid } = req.params as { platform: string; puuid: string };
+
+    // need summonerId for league-v4 entries
+    let summoner: any = null;
+    const tryPlatforms = [platform, ...PROBE_AMERICAS.filter((p) => p !== platform)];
+    for (const pf of tryPlatforms) {
+      try {
+        const s = await getSummonerByPUUID(pf, puuid);
+        if (s?.id) { summoner = { ...s, _pf: pf }; break; }
+      } catch (e: any) {
+        if (e?.response?.status === 403) break;
+      }
+    }
+    if (!summoner?.id) return res.json({ tier: null, regionalRank: null, topPercent: null });
+
+    const pf = summoner._pf as string;
+    const entries = await getLeagueEntriesBySummonerId(pf, summoner.id);
+    const solo = (entries || []).find((e: any) => e.queueType === "RANKED_SOLO_5x5");
+    if (!solo) return res.json({ tier: null, regionalRank: null, topPercent: null });
+
+    const tier = String(solo.tier || "").toUpperCase();
+    if (!APEX_BY_TIER[tier]) {
+      // Non-apex: cannot compute exact regional position from public API. Be honest.
+      return res.json({ tier, regionalRank: null, topPercent: null });
+    }
+
+    // Apex: compute exact position by LP within the combined apex ladder.
+    // top% = how the player ranks among all Master+ players (a real, meaningful number).
+    const [chal, gm, master] = await Promise.all([
+      getApexLeague(pf, "CHALLENGER"),
+      getApexLeague(pf, "GRANDMASTER"),
+      getApexLeague(pf, "MASTER"),
+    ]);
+    // Sort descending by LP across the whole apex pyramid (Challenger > GM > Master, then LP)
+    const tierWeight: Record<string, number> = { CHALLENGER: 3, GRANDMASTER: 2, MASTER: 1 };
+    const ladder = [
+      ...chal.map((e) => ({ ...e, _t: "CHALLENGER" })),
+      ...gm.map((e) => ({ ...e, _t: "GRANDMASTER" })),
+      ...master.map((e) => ({ ...e, _t: "MASTER" })),
+    ].sort((a, b) => (tierWeight[b._t] - tierWeight[a._t]) || (b.leaguePoints - a.leaguePoints));
+
+    const total = ladder.length;
+    const idx = ladder.findIndex((e) => e.summonerId === summoner.id || e.puuid === puuid);
+    const regionalRank = idx >= 0 ? idx + 1 : null;
+    const topPercent =
+      regionalRank != null && total > 0
+        ? Math.max(0.01, Math.round((regionalRank / total) * 1000) / 10) // one decimal, e.g. 0.4
+        : null;
+
+    return res.json({ tier, lp: solo.leaguePoints, regionalRank, topPercent, apexTotal: total });
+  } catch (e: any) {
+    return res.status(e?.response?.status || 500).json({
+      message: e?.response?.data?.status?.message || e?.message || "league-rank failed",
+      tier: null, regionalRank: null, topPercent: null,
+    });
+  }
+});
+
+// ─── Season snapshots (forward-only) ──────────────────────────────────────────
+async function initRankedSnapshotsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS profile_ranked_snapshots (
+      id          INT AUTO_INCREMENT PRIMARY KEY,
+      puuid       VARCHAR(200) NOT NULL,
+      season      VARCHAR(20)  NOT NULL,
+      queue       VARCHAR(40)  NOT NULL,
+      tier        VARCHAR(20),
+      \`rank\`      VARCHAR(8),
+      lp          INT DEFAULT 0,
+      wins        INT DEFAULT 0,
+      losses      INT DEFAULT 0,
+      captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_snapshot (puuid, season, queue),
+      INDEX idx_puuid (puuid)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+initRankedSnapshotsTable().catch((e) => console.error("[profile_ranked_snapshots] init error:", e.message));
+
+function currentSeason(): string {
+  // Forward-only label; today is 2026 → "2026". Adjust if Riot splits seasons.
+  return String(new Date().getFullYear());
+}
+
+export async function upsertRankedSnapshot(
+  puuid: string,
+  rankArr: { queue: string; tier: string; rank: string; lp: number; wins: number; losses: number }[]
+) {
+  if (!rankArr?.length) return;
+  const season = currentSeason();
+  for (const r0 of rankArr) {
+    if (!r0.tier) continue;
+    try {
+      await pool.query(
+        `INSERT INTO profile_ranked_snapshots (puuid, season, queue, tier, \`rank\`, lp, wins, losses)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           tier=VALUES(tier), \`rank\`=VALUES(\`rank\`), lp=VALUES(lp),
+           wins=VALUES(wins), losses=VALUES(losses), captured_at=CURRENT_TIMESTAMP`,
+        [puuid, season, r0.queue, r0.tier, r0.rank, r0.lp ?? 0, r0.wins ?? 0, r0.losses ?? 0]
+      );
+    } catch (e: any) {
+      console.warn("[profile_ranked_snapshots] upsert error:", e?.message);
+    }
+  }
+}
+
+/**
+ * GET /api/stats/seasons/:puuid
+ * Returns stored season snapshots (empty until snapshots accrue — honest:
+ * past seasons cannot be backfilled from Riot).
+ */
+r.get("/seasons/:puuid", async (req, res) => {
+  try {
+    const { puuid } = req.params as { puuid: string };
+    const [rows] = await pool.query<any[]>(
+      `SELECT season, queue, tier, \`rank\` AS rankDiv, lp, wins, losses, captured_at
+       FROM profile_ranked_snapshots WHERE puuid = ? ORDER BY season DESC, queue ASC`,
+      [puuid]
+    );
+    return res.json({ seasons: rows });
+  } catch (e: any) {
+    return res.status(500).json({ message: e?.message || "seasons failed", seasons: [] });
   }
 });
 
