@@ -130,17 +130,24 @@ const masteryColor = (level: number): string => {
 // background gradient + layered shadows + a faint inset top highlight, so the
 // panels read as embedded into the dark page rather than boxes on top of it.
 const PANEL_SURFACE: React.CSSProperties = {
+  // Frosted glass: translucent fill + backdrop blur lets the page/hero show
+  // through, so panels feel embedded in the background rather than stacked cards.
   background:
-    'linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.012) 14%, rgba(255,255,255,0) 60%), rgba(19,19,22,0.55)',
+    'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.012) 22%, rgba(255,255,255,0) 70%), rgba(15,15,19,0.34)',
+  backdropFilter: 'blur(18px) saturate(120%)',
+  WebkitBackdropFilter: 'blur(18px) saturate(120%)',
   borderRadius: 18,
+  // Soft ambient depth only — no heavy "floating card" drop shadow.
   boxShadow:
-    '0 20px 60px -24px rgba(0,0,0,.7), 0 2px 10px -6px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+    'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
 };
 
-// Inner "sub-cards" (mini ranks, summary strips, list rows): softer still, no
-// borders — a barely-there tint that lifts on hover.
+// Inner "sub-cards" (mini ranks, summary strips, list rows): barely-there tint,
+// no borders — they read as faint frosted regions of the same surface.
 const SUBCARD_SURFACE: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.028)',
+  background: 'rgba(255,255,255,0.02)',
+  backdropFilter: 'blur(6px)',
+  WebkitBackdropFilter: 'blur(6px)',
   borderRadius: 12,
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
 };
