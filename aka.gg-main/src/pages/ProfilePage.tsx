@@ -14,6 +14,9 @@ import {
 } from '@/lib/dataDragon';
 import { RefreshCw, Star, Search, ChevronDown } from 'lucide-react';
 import { KataLoaderOverlay } from '@/components/KataLoader';
+import { motion } from 'framer-motion';
+import ScrollDagger from '@/components/ScrollDagger';
+import ChampionDanceSlot from '@/components/ChampionDanceSlot';
 
 // ─── Brand tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -123,27 +126,53 @@ const masteryColor = (level: number): string => {
 };
 
 // ─── Small UI primitives ────────────────────────────────────────────────────
-function Panel({ children, style, className = '' }: {
-  children: React.ReactNode; style?: React.CSSProperties; className?: string;
+// Seamless "incrustado" surface: no hard 1px outline, just a whisper-soft
+// background gradient + layered shadows + a faint inset top highlight, so the
+// panels read as embedded into the dark page rather than boxes on top of it.
+const PANEL_SURFACE: React.CSSProperties = {
+  background:
+    'linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.012) 14%, rgba(255,255,255,0) 60%), rgba(19,19,22,0.55)',
+  borderRadius: 18,
+  boxShadow:
+    '0 20px 60px -24px rgba(0,0,0,.7), 0 2px 10px -6px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+};
+
+// Inner "sub-cards" (mini ranks, summary strips, list rows): softer still, no
+// borders — a barely-there tint that lifts on hover.
+const SUBCARD_SURFACE: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.028)',
+  borderRadius: 12,
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+};
+
+// Shared motion: fade + rise + de-blur as the panel scrolls into view.
+const RISE_IN = {
+  initial: { opacity: 0, y: 22, filter: 'blur(6px)' },
+  whileInView: { opacity: 1, y: 0, filter: 'blur(0px)' },
+  viewport: { once: true, margin: '-60px' },
+  transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+};
+
+function Panel({ children, style, className = '', delay = 0 }: {
+  children: React.ReactNode; style?: React.CSSProperties; className?: string; delay?: number;
 }) {
   return (
-    <div
+    <motion.div
       className={className}
-      style={{
-        background: C.panel,
-        border: `1px solid ${C.border}`,
-        borderRadius: 12,
-        ...style,
-      }}
+      initial={RISE_IN.initial}
+      whileInView={RISE_IN.whileInView}
+      viewport={RISE_IN.viewport}
+      transition={{ ...RISE_IN.transition, delay }}
+      style={{ ...PANEL_SURFACE, ...style }}
     >
       {children}
-    </div>
+    </motion.div>
   );
 }
 
 function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
       <h2
         style={{
           fontFamily: FONT_COND,
@@ -432,6 +461,14 @@ export default function ProfilePage() {
 
   const masteryTop = (summary?.masteryTop || []).slice(0, 6);
 
+  // Highest-mastery champion → feeds the small 3D dancing-champion slot.
+  const topMasteryChamp = useMemo(() => {
+    const top = (summary?.masteryTop || [])[0];
+    if (!top) return null;
+    const c = champByKey?.[String(top.championId)];
+    return c ? { slug: c.id, name: c.name } : null; // c.id is the DDragon slug (e.g. "Pantheon")
+  }, [summary, champByKey]);
+
   const filtered = useMemo(() => {
     if (filter === 'all') return matches;
     return matches.filter((m) => m.queueId === filter);
@@ -523,10 +560,13 @@ export default function ProfilePage() {
       {/* 3D Katarina loader while resolving the invocador (initial load). */}
       {!puuid && !resolveErr && <KataLoaderOverlay show label="Cargando invocador" />}
 
+      {/* Scroll-driven decorative Katarina dagger on the right margin. */}
+      <ScrollDagger side="right" />
+
       {/* Top bar removed — the app's global Navbar is used instead. */}
 
       <div className="atak-glow" style={{ minHeight: '100vh' }}>
-        <div style={{ maxWidth: 1340, margin: '0 auto', padding: '18px 18px 80px' }}>
+        <div style={{ maxWidth: 1340, margin: '0 auto', padding: '88px 18px 80px' }}>
 
           {/* Resolve error */}
           {resolveErr && !puuid && (
@@ -543,11 +583,12 @@ export default function ProfilePage() {
           {/* ── Profile header ─────────────────────────────────────────────── */}
           <Panel
             style={{
-              padding: 20, marginBottom: 18, overflow: 'hidden', position: 'relative',
-              background: `linear-gradient(120deg, rgba(225,36,46,0.16), rgba(225,36,46,0.03) 45%, ${C.panel} 70%)`,
+              padding: '26px 28px', marginBottom: 20, overflow: 'hidden', position: 'relative',
+              background:
+                'linear-gradient(120deg, rgba(225,36,46,0.18), rgba(225,36,46,0.04) 42%, rgba(255,255,255,0.012) 68%), rgba(17,17,20,0.5)',
             }}
           >
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 26, alignItems: 'center' }}>
               {/* Icon + level */}
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 {summaryLoading && !summary ? (
@@ -578,7 +619,7 @@ export default function ProfilePage() {
                     {gameName || '—'}
                     <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 600, fontSize: 22 }}> #{tagLine}</span>
                   </h1>
-                  <span style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: 999, padding: '3px 12px', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
+                  <span style={{ background: 'rgba(255,255,255,0.07)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)', borderRadius: 999, padding: '4px 13px', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
                     {platform.toUpperCase()}
                   </span>
                   <Star size={20} style={{ color: C.gold, cursor: 'pointer', opacity: 0.85 }} />
@@ -619,8 +660,8 @@ export default function ProfilePage() {
               </div>
 
               {/* Season + refresh */}
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', alignSelf: 'flex-start' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 600 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', alignSelf: 'flex-start', marginLeft: 'auto' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...SUBCARD_SURFACE, borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 600 }}>
                   Temporada 2026 <ChevronDown size={15} />
                 </div>
                 <button
@@ -636,7 +677,7 @@ export default function ProfilePage() {
           </Panel>
 
           {/* ── Two-column grid ────────────────────────────────────────────── */}
-          <div className="atak-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.12fr)', gap: 18 }}>
+          <div className="atak-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.12fr)', gap: 20 }}>
 
             {/* LEFT */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
@@ -657,6 +698,14 @@ export default function ProfilePage() {
 
             {/* RIGHT */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
+              {/* Small 3D dancing champion (highest mastery) — degrades to splash art. */}
+              <motion.div {...RISE_IN}>
+                <ChampionDanceSlot
+                  champSlug={topMasteryChamp?.slug}
+                  champName={topMasteryChamp?.name}
+                  loading={summaryLoading && !summary}
+                />
+              </motion.div>
               <PlayerTags tags={tags} loading={matchesLoading && !matches.length} />
               <RecentlyPlayedWith
                 players={teammates} loading={teammatesLoading}
@@ -678,7 +727,7 @@ function PersonalScore({ solo, flex, loading, leagueRank }: {
   leagueRank: { regionalRank: number | null; topPercent: number | null } | null;
 }) {
   return (
-    <Panel style={{ padding: 18 }}>
+    <Panel style={{ padding: 22 }}>
       <SectionTitle>Puntuación personal</SectionTitle>
       {loading ? (
         <div style={{ display: 'flex', gap: 16 }}>
@@ -696,7 +745,7 @@ function PersonalScore({ solo, flex, loading, leagueRank }: {
       {/* 2-up: Flex + enemy avg */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
         <MiniRank label="Flex" rank={flex} loading={loading} />
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+        <div style={{ ...SUBCARD_SURFACE, padding: 14 }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>
             Promedio enemigos
           </div>
@@ -741,7 +790,7 @@ function FeaturedRank({ rank, leagueRank }: {
 
 function MiniRank({ label, rank, loading }: { label: string; rank: RankEntry | null; loading: boolean }) {
   return (
-    <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+    <div style={{ ...SUBCARD_SURFACE, padding: 14 }}>
       <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>{label}</div>
       {loading ? <Skeleton h={18} w="70%" /> : rank ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -763,7 +812,7 @@ function MiniRank({ label, rank, loading }: { label: string; rank: RankEntry | n
 function Unranked({ label }: { label: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
-      <div style={{ width: 64, height: 64, borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, display: 'grid', placeItems: 'center', color: 'rgba(255,255,255,0.25)', fontFamily: FONT_COND, fontWeight: 800, fontSize: 22 }}>?</div>
+      <div style={{ width: 64, height: 64, borderRadius: 14, ...SUBCARD_SURFACE, display: 'grid', placeItems: 'center', color: 'rgba(255,255,255,0.25)', fontFamily: FONT_COND, fontWeight: 800, fontSize: 22 }}>?</div>
       <div>
         <div style={{ fontFamily: FONT_COND, fontWeight: 700, fontSize: 18, color: 'rgba(255,255,255,0.6)' }}>{label}</div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Juega partidas clasificatorias</div>
@@ -786,7 +835,7 @@ function RecentGames({
     { label: 'Flex', val: 440 }, { label: 'ARAM', val: 450 },
   ];
   return (
-    <Panel style={{ padding: 18 }}>
+    <Panel style={{ padding: 22 }}>
       <SectionTitle
         right={
           <div style={{ display: 'flex', gap: 6 }}>
@@ -812,7 +861,7 @@ function RecentGames({
 
       {/* Summary strip */}
       {recap && (
-        <div style={{ display: 'flex', gap: 18, alignItems: 'center', background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px', marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 18, alignItems: 'center', ...SUBCARD_SURFACE, padding: '12px 16px', marginBottom: 14, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Últimas {recap.n}</div>
             <div style={{ fontFamily: FONT_COND, fontWeight: 700, fontSize: 16 }}>
@@ -840,8 +889,8 @@ function RecentGames({
           No hay partidas recientes para este filtro.
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {matches.map((m) => <MatchRowMini key={m.matchId} m={m} champByKey={champByKey} puuid={puuid} region={region} continent={continent} />)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          {matches.map((m, i) => <MatchRowMini key={m.matchId} m={m} champByKey={champByKey} puuid={puuid} region={region} continent={continent} index={i} />)}
         </div>
       )}
 
@@ -871,8 +920,8 @@ function timeAgo(ms?: number) {
   return `hace ${d}d`;
 }
 
-function MatchRowMini({ m, champByKey, puuid, region, continent }: {
-  m: any; champByKey: any; puuid?: string; region: string; continent: string;
+function MatchRowMini({ m, champByKey, puuid, region, continent, index = 0 }: {
+  m: any; champByKey: any; puuid?: string; region: string; continent: string; index?: number;
 }) {
   const navigate = useNavigate();
   const c = champByKey?.[String(m.championId)];
@@ -894,19 +943,30 @@ function MatchRowMini({ m, champByKey, puuid, region, continent }: {
     navigate(`/match/${continent}/${m.matchId}`, { state: { puuid, region } });
 
   return (
-    <div
+    <motion.div
       onClick={openDetail}
       role="button"
       title="Ver detalle de la partida"
+      initial={{ opacity: 0, y: 14 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-40px' }}
+      transition={{ duration: 0.4, delay: Math.min(index, 8) * 0.045, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -2 }}
       style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px',
-        borderRadius: 10, border: `1px solid ${C.border}`,
-        borderLeft: `4px solid ${win ? C.win : C.loss}`,
-        background: win ? 'rgba(47,191,138,0.05)' : 'rgba(255,90,100,0.05)',
-        flexWrap: 'wrap', cursor: 'pointer', transition: 'background .15s',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px',
+        borderRadius: 12,
+        boxShadow: `inset 4px 0 0 ${win ? C.win : C.loss}, inset 0 1px 0 rgba(255,255,255,0.04)`,
+        background: win ? 'rgba(47,191,138,0.06)' : 'rgba(255,90,100,0.06)',
+        flexWrap: 'wrap', cursor: 'pointer', transition: 'background .18s, box-shadow .18s',
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = win ? 'rgba(47,191,138,0.1)' : 'rgba(255,90,100,0.1)')}
-      onMouseLeave={(e) => (e.currentTarget.style.background = win ? 'rgba(47,191,138,0.05)' : 'rgba(255,90,100,0.05)')}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = win ? 'rgba(47,191,138,0.12)' : 'rgba(255,90,100,0.12)';
+        e.currentTarget.style.boxShadow = `inset 4px 0 0 ${win ? C.win : C.loss}, 0 14px 30px -16px rgba(0,0,0,.7)`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = win ? 'rgba(47,191,138,0.06)' : 'rgba(255,90,100,0.06)';
+        e.currentTarget.style.boxShadow = `inset 4px 0 0 ${win ? C.win : C.loss}, inset 0 1px 0 rgba(255,255,255,0.04)`;
+      }}
     >
       {/* Champ + spells */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -977,14 +1037,14 @@ function MatchRowMini({ m, champByKey, puuid, region, continent }: {
           ))}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
 // ─── Player tags ────────────────────────────────────────────────────────────
 function PlayerTags({ tags, loading }: { tags: string[]; loading: boolean }) {
   return (
-    <Panel style={{ padding: 18 }}>
+    <Panel style={{ padding: 22 }}>
       <SectionTitle>Etiquetas del jugador</SectionTitle>
       {loading ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1008,7 +1068,7 @@ function RecentlyPlayedWith({ players, loading, champByKey, region }: {
   players: any[] | null; loading: boolean; champByKey: any; region: string;
 }) {
   return (
-    <Panel style={{ padding: 18 }}>
+    <Panel style={{ padding: 22 }}>
       <SectionTitle>Jugó recientemente con</SectionTitle>
       {loading && !players ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1028,12 +1088,19 @@ function RecentlyPlayedWith({ players, loading, champByKey, region }: {
             const inner = (
               <div
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
-                  borderRadius: 8, border: `1px solid ${C.border}`,
-                  background: 'rgba(255,255,255,0.025)', transition: 'background .15s',
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px',
+                  ...SUBCARD_SURFACE, transition: 'background .18s, transform .18s, box-shadow .18s',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(225,36,46,0.08)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(225,36,46,0.1)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 12px 26px -16px rgba(0,0,0,.7)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.028)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.04)';
+                }}
               >
                 {tc?.image ? (
                   <img src={tc.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
@@ -1077,7 +1144,7 @@ function RecentlyPlayedWith({ players, loading, champByKey, region }: {
 function RolePerformance({ perf, loading }: { perf: Record<Role, { games: number; wins: number }>; loading: boolean }) {
   const total = ROLES.reduce((s, r) => s + perf[r].games, 0);
   return (
-    <Panel style={{ padding: 18 }}>
+    <Panel style={{ padding: 22 }}>
       <SectionTitle>Rendimiento por rol</SectionTitle>
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1118,7 +1185,7 @@ function ChampionsTable({ rows, champByKey, loading, bestPlayers, region }: {
   bestPlayers?: Record<string, any> | null; region: string;
 }) {
   return (
-    <Panel style={{ padding: 18 }}>
+    <Panel style={{ padding: 22 }}>
       <SectionTitle>Campeones · Solo/Dúo</SectionTitle>
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1147,7 +1214,12 @@ function ChampionsTable({ rows, champByKey, loading, bestPlayers, region }: {
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>—</span>
             );
             return (
-              <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 1.1fr 0.9fr', alignItems: 'center', gap: 8 }}>
+              <div
+                key={r.id}
+                style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 1.1fr 0.9fr', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 10, transition: 'background .16s, transform .16s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.transform = 'translateY(0)'; }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                   <img src={c?.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c?.name || r.id}</span>
