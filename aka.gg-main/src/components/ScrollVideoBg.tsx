@@ -72,7 +72,7 @@ export function ScrollVideoBg({
       ref={wrapRef}
       aria-hidden
       style={{
-        position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none',
+        position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
         overflow: 'hidden', willChange: 'opacity, transform', transformOrigin: '70% 30%',
       }}
     >

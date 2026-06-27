@@ -553,7 +553,7 @@ export default function ProfilePage() {
         @keyframes atak-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
         .atak-glow { background:
           radial-gradient(900px 500px at 80% -10%, rgba(225,36,46,0.14), transparent 60%),
-          ${C.bg}; }
+          transparent; }
         @media (max-width: 960px){ .atak-grid{ grid-template-columns: 1fr !important; } }
       `}</style>
 
@@ -566,7 +566,7 @@ export default function ProfilePage() {
 
       {/* Top bar removed — the app's global Navbar is used instead. */}
 
-      <div className="atak-glow" style={{ minHeight: '100vh' }}>
+      <div className="atak-glow" style={{ minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <div style={{ maxWidth: 1340, margin: '0 auto', padding: '88px 18px 80px' }}>
 
           {/* Resolve error */}
