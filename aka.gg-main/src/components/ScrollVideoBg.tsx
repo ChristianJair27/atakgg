@@ -1,62 +1,81 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Scroll-scrubbed background video (Apple-style): maps page scroll progress to
- * video.currentTime so scrolling "plays" the clip frame-by-frame. Drop the file at
- *   aka.gg-main/public/video/dagger-scroll.mp4
- * Encode with dense keyframes for smooth seeking, e.g.:
- *   ffmpeg -i in.mp4 -an -vf "scale=1920:-2" -c:v libx264 -g 1 -pix_fmt yuv420p -crf 20 dagger-scroll.mp4
- * (-g 1 = every frame is a keyframe → no stutter when scrubbing.)
- * If the file is missing it renders nothing (the page keeps its normal background).
+ * HERO scroll-scrubbed video: the dagger clip is bold at the top of the page,
+ * its frames advance as you scroll, and it FADES OUT as you enter the data —
+ * leaving a clean dark background below. (Option 1.)
+ *
+ * Drop the file at  aka.gg-main/public/video/dagger-scroll.mp4
+ * (re-encode with dense keyframes for smooth seeking: ffmpeg -i in.mp4 -an -c:v libx264 -g 1 -crf 20 out.mp4)
+ * Renders nothing until the file exists.
+ *
+ * @param fadeVh  How many viewport-heights of scrolling the hero spans before it's
+ *                fully faded (default 1.1 → gone shortly after the first screen).
  */
 export function ScrollVideoBg({
   src = '/video/dagger-scroll.mp4',
-  opacity = 0.45,
-}: { src?: string; opacity?: number }) {
+  fadeVh = 1.1,
+  maxOpacity = 0.9,
+}: { src?: string; fadeVh?: number; maxOpacity?: number }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
   const vidRef = useRef<HTMLVideoElement>(null);
   const [ok, setOk] = useState(true);
-  const target = useRef(0);
+  const target = useRef(0);   // 0..1 hero progress (eased target)
   const current = useRef(0);
   const raf = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const vid = vidRef.current;
-    if (!vid) return;
+    const wrap = wrapRef.current;
+    if (!vid || !wrap) return;
     try { vid.pause(); } catch { /* noop */ }
 
-    const onScroll = () => {
-      const max = document.documentElement.scrollHeight - window.innerHeight;
-      target.current = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+    const readScroll = () => {
+      const fadeEnd = Math.max(1, window.innerHeight * fadeVh);
+      target.current = Math.min(1, Math.max(0, window.scrollY / fadeEnd));
     };
 
     const tick = () => {
-      // Ease toward the target scroll position for buttery scrubbing.
-      current.current += (target.current - current.current) * 0.12;
+      current.current += (target.current - current.current) * 0.12; // ease
+      const p = current.current;
+      // Scrub the clip across the hero zone (full rotation completes as it fades).
       const d = vid.duration;
-      if (d && !Number.isNaN(d) && Number.isFinite(d)) {
-        const t = current.current * d;
+      if (d && Number.isFinite(d)) {
+        const t = p * d;
         if (Math.abs(t - vid.currentTime) > 0.01) {
-          try { vid.currentTime = t; } catch { /* seeking not ready yet */ }
+          try { vid.currentTime = t; } catch { /* not seekable yet */ }
         }
       }
+      // Fade + gentle parallax zoom as it leaves.
+      const op = Math.max(0, (1 - p * 1.05)) * maxOpacity;
+      wrap.style.opacity = String(op);
+      wrap.style.transform = `scale(${1 + p * 0.10}) translateY(${p * -24}px)`;
+      wrap.style.visibility = op < 0.01 ? 'hidden' : 'visible';
       raf.current = requestAnimationFrame(tick);
     };
 
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll);
+    readScroll();
+    window.addEventListener('scroll', readScroll, { passive: true });
+    window.addEventListener('resize', readScroll);
     raf.current = requestAnimationFrame(tick);
     return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
+      window.removeEventListener('scroll', readScroll);
+      window.removeEventListener('resize', readScroll);
       if (raf.current) cancelAnimationFrame(raf.current);
     };
-  }, []);
+  }, [fadeVh, maxOpacity]);
 
   if (!ok) return null;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none', overflow: 'hidden' }} aria-hidden>
+    <div
+      ref={wrapRef}
+      aria-hidden
+      style={{
+        position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none',
+        overflow: 'hidden', willChange: 'opacity, transform', transformOrigin: '70% 30%',
+      }}
+    >
       <video
         ref={vidRef}
         src={src}
@@ -64,15 +83,16 @@ export function ScrollVideoBg({
         playsInline
         preload="auto"
         onError={() => setOk(false)}
-        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
       />
-      {/* Dark + red vignette so foreground content stays perfectly readable. */}
+      {/* Light at the very top (dagger stays crisp), darkening downward so it melts
+          into the page; plus the ATAK red glow up-right. */}
       <div
         style={{
           position: 'absolute', inset: 0,
           background:
-            'radial-gradient(120% 80% at 72% -5%, rgba(225,36,46,0.12), transparent 55%),' +
-            'linear-gradient(180deg, rgba(10,10,12,0.50) 0%, rgba(10,10,12,0.80) 100%)',
+            'radial-gradient(90% 60% at 72% 8%, rgba(225,36,46,0.16), transparent 55%),' +
+            'linear-gradient(180deg, rgba(10,10,12,0.12) 0%, rgba(10,10,12,0.55) 55%, rgba(10,10,12,0.92) 100%)',
         }}
       />
     </div>

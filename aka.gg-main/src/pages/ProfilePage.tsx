@@ -15,7 +15,6 @@ import {
 import { RefreshCw, Star, Search, ChevronDown } from 'lucide-react';
 import { KataLoaderOverlay } from '@/components/KataLoader';
 import { motion } from 'framer-motion';
-import ScrollDagger from '@/components/ScrollDagger';
 import ChampionDanceSlot from '@/components/ChampionDanceSlot';
 import { ScrollVideoBg } from '@/components/ScrollVideoBg';
 
@@ -561,12 +560,9 @@ export default function ProfilePage() {
       {/* 3D Katarina loader while resolving the invocador (initial load). */}
       {!puuid && !resolveErr && <KataLoaderOverlay show label="Cargando invocador" />}
 
-      {/* Scroll-scrubbed background video (frames advance with scroll). Renders
-          nothing until /public/video/dagger-scroll.mp4 exists. */}
+      {/* Hero scroll-scrubbed dagger video: bold up top, advances with scroll,
+          fades into the data. Renders nothing until /public/video/dagger-scroll.mp4 exists. */}
       <ScrollVideoBg />
-
-      {/* Scroll-driven decorative Katarina dagger on the right margin. */}
-      <ScrollDagger side="right" />
 
       {/* Top bar removed — the app's global Navbar is used instead. */}
 
