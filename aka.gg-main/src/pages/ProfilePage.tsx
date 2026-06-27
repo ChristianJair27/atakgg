@@ -17,6 +17,7 @@ import { KataLoaderOverlay } from '@/components/KataLoader';
 import { motion } from 'framer-motion';
 import ScrollDagger from '@/components/ScrollDagger';
 import ChampionDanceSlot from '@/components/ChampionDanceSlot';
+import { ScrollVideoBg } from '@/components/ScrollVideoBg';
 
 // ─── Brand tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -559,6 +560,10 @@ export default function ProfilePage() {
 
       {/* 3D Katarina loader while resolving the invocador (initial load). */}
       {!puuid && !resolveErr && <KataLoaderOverlay show label="Cargando invocador" />}
+
+      {/* Scroll-scrubbed background video (frames advance with scroll). Renders
+          nothing until /public/video/dagger-scroll.mp4 exists. */}
+      <ScrollVideoBg />
 
       {/* Scroll-driven decorative Katarina dagger on the right margin. */}
       <ScrollDagger side="right" />
