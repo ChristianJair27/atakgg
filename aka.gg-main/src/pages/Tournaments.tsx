@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import axiosInstance from '@/lib/axios';
 import { TournamentRegisterModal } from '@/components/TournamentRegisterModal';
 import { TournamentCreateModal } from '@/components/TournamentCreateModal';
+import { ScrollVideoBg } from '@/components/ScrollVideoBg';
 import {
   Trophy, Calendar, Users, Plus, ArrowRight,
   Zap, Shield, Clock, CheckCircle, RefreshCw,
@@ -61,9 +62,15 @@ function TournamentCard({
 
   return (
     <div ref={ref}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-md
-        hover:border-white/20 hover:bg-white/[0.05]
-        transition-all duration-300 overflow-hidden"
+      className="group relative rounded-2xl overflow-hidden transition-all duration-300
+        hover:-translate-y-0.5"
+      style={{
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 22%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)',
+        backdropFilter: 'blur(20px) saturate(120%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
+      }}
     >
       {/* Subtle top glow on hover */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/0 to-transparent
@@ -194,7 +201,14 @@ function StatBar({ tournaments }: { tournaments: Tournament[] }) {
         { label:'Finalizados', value: done,               color:'text-gray-400' },
       ].map(s => (
         <div key={s.label}
-          className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 text-center">
+          className="rounded-2xl p-5 text-center"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)',
+            backdropFilter: 'blur(20px) saturate(120%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
+          }}>
           <div className={`text-3xl font-black ${s.color}`}>{s.value}</div>
           <div className="text-xs text-gray-600 uppercase tracking-widest mt-1">{s.label}</div>
         </div>
@@ -252,17 +266,19 @@ export default function TournamentsPage() {
     <div className="min-h-screen text-white"
       onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}>
 
-      {/* Background */}
-      <div className="fixed inset-0 bg-black -z-20" />
+      {/* Living scroll-scrubbed dagger background (shared) */}
+      <ScrollVideoBg />
+
+      {/* Background accents (kept translucent so the video reads through) */}
       <div className="fixed inset-0 -z-10 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(127,29,29,0.3) 0%, transparent 70%)' }} />
+        style={{ background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(127,29,29,0.22) 0%, transparent 70%)' }} />
       <div className="fixed inset-0 pointer-events-none -z-10"
         style={{ background: `radial-gradient(500px circle at ${mousePos.x}px ${mousePos.y}px, rgba(239,68,68,0.05), transparent 70%)` }} />
       {/* Grid */}
       <div className="fixed inset-0 -z-10 opacity-[0.025]"
         style={{ backgroundImage:'linear-gradient(rgba(255,255,255,0.5) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.5) 1px,transparent 1px)', backgroundSize:'60px 60px' }} />
 
-      <div className="max-w-6xl mx-auto px-4 py-16">
+      <div className="max-w-6xl mx-auto px-4 py-16 relative z-[1]">
 
         {/* Header */}
         <div ref={headerRef} className="text-center mb-14">

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import Hls from 'hls.js';
 import { axiosInstance } from '@/lib/axios';
+import { ScrollVideoBg } from '@/components/ScrollVideoBg';
 import {
   Search, Trophy, Zap, BarChart3, Target,
   ArrowRight, Globe, Users, Shield, Star,
@@ -180,10 +181,15 @@ export default function Home() {
   });
 
   return (
-    <div className="bg-black text-white selection:bg-red-500/30 selection:text-white">
-      
+    <div className="relative bg-black text-white selection:bg-red-500/30 selection:text-white">
+
+      {/* Living scroll-scrubbed dagger background (shared). Sits at fixed z-0;
+          only reveals through sections whose own background is transparent (the
+          Mission section below) — the hero keeps its own looping video. */}
+      <ScrollVideoBg />
+
       {/* 1. HERO SECTION */}
-      <section className="relative min-h-screen flex flex-col justify-center items-center overflow-hidden px-6 md:px-12 pt-20">
+      <section className="relative min-h-screen flex flex-col justify-center items-center overflow-hidden px-6 md:px-12 pt-20 bg-black">
         
         {/* Background Looping Video */}
         <div className="absolute inset-0 pointer-events-none z-0">
@@ -417,10 +423,14 @@ export default function Home() {
         </div>
       </section>
 
-      {/* 3. MISSION SECTION WITH SCROLL REVEAL */}
-      <section ref={missionContainerRef} className="py-32 md:py-48 px-6 md:px-12 bg-black overflow-hidden border-t border-white/[0.04]">
-        <div className="max-w-5xl mx-auto flex flex-col items-center space-y-16">
-          
+      {/* 3. MISSION SECTION WITH SCROLL REVEAL — transparent so the living
+          dagger background reads through behind the word-by-word reveal. */}
+      <section ref={missionContainerRef} className="relative py-32 md:py-48 px-6 md:px-12 overflow-hidden border-t border-white/[0.04]">
+        {/* Soft scrim keeps the reveal text readable over the moving video */}
+        <div className="absolute inset-0 -z-[1] pointer-events-none"
+          style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.65) 100%)' }} />
+        <div className="max-w-5xl mx-auto flex flex-col items-center space-y-16 relative z-[1]">
+
           {/* Centered Loop Video */}
           <div className="relative w-full max-w-xl aspect-square rounded-3xl overflow-hidden border border-white/[0.05] shadow-2xl">
             <video 

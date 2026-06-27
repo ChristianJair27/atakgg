@@ -1,9 +1,7 @@
 // src/pages/Dashboard.tsx
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/Button";
-import { Input } from "@/components/Input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/Card";
+import { motion } from "framer-motion";
 import { useAuth } from "@/features/auth/useAuth";
 import {
   User as UserIcon,
@@ -14,8 +12,118 @@ import {
   MessageSquare,
   Target,
   Award,
+  RefreshCw,
 } from "lucide-react";
 import { axiosInstance } from "@/lib/axios";
+import { ScrollVideoBg } from "@/components/ScrollVideoBg";
+
+// ─── Brand tokens (shared ATAK vocabulary) ──────────────────────────────────
+const C = {
+  bg: "#0a0a0c",
+  red: "#e1242e",
+  redHover: "#ff5a64",
+  win: "#2fbf8a",
+  loss: "#ff5a64",
+  gold: "#c8aa6e",
+};
+const FONT_BODY = "'Saira', system-ui, sans-serif";
+const FONT_COND = "'Saira Condensed', 'Saira', sans-serif";
+
+// Frosted glass surface — same recipe as ProfilePage so panels feel embedded
+// into the living dagger background rather than opaque cards.
+const PANEL_SURFACE: React.CSSProperties = {
+  background:
+    "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 22%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)",
+  backdropFilter: "blur(20px) saturate(120%)",
+  WebkitBackdropFilter: "blur(20px) saturate(120%)",
+  borderRadius: 18,
+  boxShadow:
+    "inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)",
+};
+
+const RISE_IN = {
+  initial: { opacity: 0, y: 22, filter: "blur(6px)" },
+  whileInView: { opacity: 1, y: 0, filter: "blur(0px)" },
+  viewport: { once: true, margin: "-60px" },
+  transition: {
+    duration: 0.55,
+    ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+  },
+};
+
+function Panel({
+  children,
+  style,
+  delay = 0,
+  hover = false,
+}: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  delay?: number;
+  hover?: boolean;
+}) {
+  return (
+    <motion.div
+      initial={RISE_IN.initial}
+      whileInView={RISE_IN.whileInView}
+      viewport={RISE_IN.viewport}
+      transition={{ ...RISE_IN.transition, delay }}
+      whileHover={hover ? { y: -3 } : undefined}
+      style={{ ...PANEL_SURFACE, ...style }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function SectionTitle({
+  children,
+  sub,
+}: {
+  children: React.ReactNode;
+  sub?: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <h2
+        style={{
+          fontFamily: FONT_COND,
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.12em",
+          fontSize: 13,
+          color: "rgba(255,255,255,0.82)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          margin: 0,
+        }}
+      >
+        <span
+          style={{
+            width: 4,
+            height: 16,
+            background: C.red,
+            borderRadius: 2,
+            display: "inline-block",
+          }}
+        />
+        {children}
+      </h2>
+      {sub && (
+        <p
+          style={{
+            margin: "6px 0 0 14px",
+            fontSize: 12.5,
+            color: "rgba(255,255,255,0.42)",
+          }}
+        >
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+}
 
 // ==== helpers ====
 function b64urlToJson<T = any>(s: string): T {
@@ -114,7 +222,6 @@ const Dashboard = () => {
       setLinking(false);
     }
   };
-  useEffect(() => { console.log("OVERVIEW", overview); }, [overview]);
 
   useEffect(() => {
     fetchOverview();
@@ -123,54 +230,144 @@ const Dashboard = () => {
   // ===== loading =====
   if (loading) {
     return (
-      <div className="min-h-[60vh] grid place-items-center text-muted-foreground">
-        Cargando tu dashboard…
+      <div
+        style={{
+          minHeight: "60vh",
+          display: "grid",
+          placeItems: "center",
+          color: "rgba(255,255,255,0.55)",
+          fontFamily: FONT_BODY,
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+          <RefreshCw size={26} style={{ color: C.red }} className="animate-spin" />
+          <span style={{ fontSize: 14 }}>Cargando tu dashboard…</span>
+        </div>
       </div>
     );
   }
 
-  
-
   // ===== CTA de vinculación si no hay cuenta vinculada =====
   if (!overview?.linked) {
     return (
-      <div className="container mx-auto max-w-2xl px-4 py-10">
-        <Card>
-          <CardHeader>
-            <CardTitle>Vincula tu cuenta de League of Legends</CardTitle>
-            <CardDescription>Para mostrar tus estadísticas reales en ATAK.GG</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
-                <label className="text-sm font-medium">Riot ID (GameName#TAG)</label>
-                <Input
-                  placeholder="Kister#IZPZ"
-                  value={riotId}
-                  onChange={(e) => setRiotId(e.target.value)}
-                />
+      <div
+        style={{ minHeight: "100vh", background: C.bg, color: "#e8e8ea", fontFamily: FONT_BODY }}
+      >
+        <ScrollVideoBg />
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            maxWidth: 640,
+            margin: "0 auto",
+            padding: "96px 18px 80px",
+          }}
+        >
+          <Panel style={{ padding: 30 }}>
+            <SectionTitle sub="Para mostrar tus estadísticas reales en ATAK.GG">
+              Vincula tu cuenta de League of Legends
+            </SectionTitle>
+
+            <div style={{ display: "grid", gap: 16, marginTop: 6 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "rgba(255,255,255,0.6)",
+                      display: "block",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Riot ID (GameName#TAG)
+                  </label>
+                  <input
+                    placeholder="Kister#IZPZ"
+                    value={riotId}
+                    onChange={(e) => setRiotId(e.target.value)}
+                    style={{
+                      width: "100%",
+                      height: 42,
+                      padding: "0 14px",
+                      background: "rgba(0,0,0,0.35)",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      borderRadius: 10,
+                      color: "#fff",
+                      fontFamily: FONT_BODY,
+                      fontSize: 14,
+                      outline: "none",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "rgba(255,255,255,0.6)",
+                      display: "block",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Región
+                  </label>
+                  <select
+                    value={platform}
+                    onChange={(e) => setPlatform(e.target.value)}
+                    style={{
+                      width: "100%",
+                      height: 42,
+                      padding: "0 12px",
+                      background: "rgba(0,0,0,0.35)",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      borderRadius: 10,
+                      color: "#fff",
+                      fontFamily: FONT_BODY,
+                      fontSize: 14,
+                      outline: "none",
+                    }}
+                  >
+                    {regions.map((r) => (
+                      <option key={r} value={r} style={{ background: "#101014" }}>
+                        {r.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="text-sm font-medium">Región</label>
-                <select
-                  className="w-full h-10 rounded-md border bg-background"
-                  value={platform}
-                  onChange={(e) => setPlatform(e.target.value)}
-                >
-                  {regions.map((r) => (
-                    <option key={r} value={r}>
-                      {r.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </div>
+
+              {err && (
+                <div style={{ fontSize: 13, color: C.loss }}>{err}</div>
+              )}
+
+              <button
+                onClick={linkAccount}
+                disabled={!riotId || linking}
+                style={{
+                  width: "100%",
+                  height: 44,
+                  background: C.red,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  fontFamily: FONT_BODY,
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: !riotId || linking ? "default" : "pointer",
+                  opacity: !riotId || linking ? 0.5 : 1,
+                  transition: "background .16s",
+                }}
+                onMouseEnter={(e) => {
+                  if (riotId && !linking) e.currentTarget.style.background = C.redHover;
+                }}
+                onMouseLeave={(e) => (e.currentTarget.style.background = C.red)}
+              >
+                {linking ? "Vinculando…" : "Vincular cuenta"}
+              </button>
             </div>
-            {err && <div className="text-sm text-destructive">{err}</div>}
-            <Button onClick={linkAccount} disabled={!riotId || linking} className="w-full">
-              {linking ? "Vinculando…" : "Vincular cuenta"}
-            </Button>
-          </CardContent>
-        </Card>
+          </Panel>
+        </div>
       </div>
     );
   }
@@ -179,202 +376,315 @@ const Dashboard = () => {
   const s = overview?.stats ?? {};
   const recent = overview?.recent ?? [];
 
+  const statCards = [
+    {
+      label: "Partidas Recientes",
+      value: `${s.totalMatches ?? 0}`,
+      icon: <BarChart3 size={26} />,
+      color: "#ffffff",
+    },
+    {
+      label: "Win Rate",
+      value: `${s.winRate ?? 0}%`,
+      icon: <Target size={26} />,
+      color: (s.winRate ?? 0) >= 50 ? C.win : C.loss,
+    },
+    {
+      label: "Rango Actual",
+      value: s.currentRank ?? "—",
+      sub: s.lp != null ? `${s.lp} LP` : "",
+      icon: <Award size={26} />,
+      color: C.gold,
+    },
+    {
+      label: "Torneos",
+      value: `${s.tournamentsJoined ?? 0}`,
+      icon: <Trophy size={26} />,
+      color: C.red,
+    },
+  ];
+
+  const quickActions = [
+    { to: "/stats", icon: <BarChart3 size={26} />, title: "Ver Stats", desc: "Revisa tus estadísticas" },
+    { to: "/tournaments", icon: <Trophy size={26} />, title: "Torneos", desc: "Únete a competencias" },
+    { to: "/social", icon: <Users size={26} />, title: "Social", desc: "Conecta con otros" },
+  ];
+
   return (
-    <div className="min-h-screen px-4 py-8">
-      <div className="container mx-auto max-w-6xl">
+    <div
+      style={{
+        minHeight: "100vh",
+        background: C.bg,
+        color: "#e8e8ea",
+        fontFamily: FONT_BODY,
+        lineHeight: 1.5,
+      }}
+    >
+      <ScrollVideoBg />
+
+      <div style={{ position: "relative", zIndex: 1, maxWidth: 1180, margin: "0 auto", padding: "88px 18px 80px" }}>
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">¡Bienvenido de vuelta, {user?.name || "Invocador"}!</h1>
-          <p className="text-muted-foreground">
+        <motion.div {...RISE_IN} style={{ marginBottom: 30 }}>
+          <h1
+            style={{
+              fontFamily: FONT_COND,
+              fontWeight: 800,
+              fontSize: 34,
+              margin: 0,
+              color: "#fff",
+              lineHeight: 1.05,
+            }}
+          >
+            ¡Bienvenido de vuelta, {user?.name || "Invocador"}!
+          </h1>
+          <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.5)", fontSize: 14 }}>
             {overview?.profile?.gameName
               ? `Cuenta vinculada: ${overview.profile.gameName}#${overview.profile.tagLine} • ${overview.profile.platform?.toUpperCase()}`
               : "Aquí está tu resumen de actividad y estadísticas"}
           </p>
+        </motion.div>
+
+        {/* Quick Stats */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+            gap: 18,
+            marginBottom: 28,
+          }}
+        >
+          {statCards.map((c, i) => (
+            <Panel key={c.label} delay={i * 0.06} hover style={{ padding: 22 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.5)" }}>{c.label}</p>
+                  <p
+                    style={{
+                      margin: "4px 0 0",
+                      fontFamily: FONT_COND,
+                      fontWeight: 800,
+                      fontSize: 26,
+                      color: c.color,
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {c.value}
+                  </p>
+                  {c.sub ? (
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{c.sub}</p>
+                  ) : null}
+                </div>
+                <span style={{ color: c.color, opacity: 0.85, flexShrink: 0 }}>{c.icon}</span>
+              </div>
+            </Panel>
+          ))}
         </div>
 
-        {/* Quick Stats (reales) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Partidas Recientes</p>
-                  <p className="text-2xl font-bold">{s.totalMatches ?? 0}</p>
-                </div>
-                <BarChart3 className="h-8 w-8 text-accent" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Win Rate</p>
-                  <p className="text-2xl font-bold">{s.winRate ?? 0}%</p>
-                </div>
-                <Target className="h-8 w-8 text-success" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Rango Actual</p>
-                  <p className="text-xl font-bold">{s.currentRank ?? "—"}</p>
-                  <p className="text-sm text-muted-foreground">{s.lp != null ? `${s.lp} LP` : ""}</p>
-                </div>
-                <Award className="h-8 w-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Torneos</p>
-                  <p className="text-2xl font-bold">{s.tournamentsJoined ?? 0}</p>
-                </div>
-                <Trophy className="h-8 w-8 text-secondary" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Main Actions */}
-          <div className="lg:col-span-2 space-y-6">
+        {/* Main grid */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)",
+            gap: 24,
+          }}
+          className="atak-dash-grid"
+        >
+          {/* Left column */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 24, minWidth: 0 }}>
             {/* Quick Actions */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Acciones Rápidas</CardTitle>
-                <CardDescription>Accede rápidamente a las funciones principales</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Link to="/stats" className="block">
-                    <div className="p-6 rounded-lg border border-border hover:bg-accent/5 transition-colors text-center">
-                      <BarChart3 className="h-8 w-8 mx-auto mb-3 text-accent" />
-                      <h3 className="font-semibold mb-1">Ver Stats</h3>
-                      <p className="text-sm text-muted-foreground">Revisa tus estadísticas</p>
-                    </div>
+            <Panel style={{ padding: 26 }}>
+              <SectionTitle sub="Accede rápidamente a las funciones principales">
+                Acciones Rápidas
+              </SectionTitle>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                  gap: 14,
+                }}
+              >
+                {quickActions.map((a) => (
+                  <Link key={a.to} to={a.to} style={{ textDecoration: "none" }}>
+                    <motion.div
+                      whileHover={{ y: -3 }}
+                      style={{
+                        padding: "22px 16px",
+                        borderRadius: 14,
+                        background: "rgba(255,255,255,0.02)",
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+                        textAlign: "center",
+                        transition: "background .18s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(225,36,46,0.08)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
+                    >
+                      <span style={{ color: C.red, display: "inline-flex" }}>{a.icon}</span>
+                      <h3
+                        style={{
+                          margin: "10px 0 2px",
+                          fontFamily: FONT_COND,
+                          fontWeight: 700,
+                          fontSize: 16,
+                          color: "#fff",
+                        }}
+                      >
+                        {a.title}
+                      </h3>
+                      <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.45)" }}>{a.desc}</p>
+                    </motion.div>
                   </Link>
+                ))}
+              </div>
+            </Panel>
 
-                  <Link to="/tournaments" className="block">
-                    <div className="p-6 rounded-lg border border-border hover:bg-accent/5 transition-colors text-center">
-                      <Trophy className="h-8 w-8 mx-auto mb-3 text-primary" />
-                      <h3 className="font-semibold mb-1">Torneos</h3>
-                      <p className="text-sm text-muted-foreground">Únete a competencias</p>
-                    </div>
-                  </Link>
-
-                  <Link to="/social" className="block">
-                    <div className="p-6 rounded-lg border border-border hover:bg-accent/5 transition-colors text-center">
-                      <Users className="h-8 w-8 mx-auto mb-3 text-secondary" />
-                      <h3 className="font-semibold mb-1">Social</h3>
-                      <p className="text-sm text-muted-foreground">Conecta con otros</p>
-                    </div>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recent Activity (real) */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Actividad Reciente</CardTitle>
-                <CardDescription>Últimas partidas</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {(!recent || recent.length === 0) ? (
-                    <p className="text-sm text-muted-foreground">No hay partidas recientes.</p>
-                  ) : (
-                    recent.map((m, index) => (
-                      <div key={index} className="flex items-center gap-4 p-3 rounded-lg border border-border">
-                        <div className={`p-2 rounded-lg bg-accent/10 ${m.win ? "text-success" : "text-destructive"}`}>
-                          <MessageSquare className="h-4 w-4" />
-                        </div>
-                        <div className="flex-grow">
-                          <p className="font-medium">{m.queueName ?? "Partida"}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {m.win ? "Victoria" : "Derrota"} • {m.championName ?? "?"} •{" "}
-                            {m.duration ? Math.round(m.duration / 60) : 0}m
-                          </p>
-                        </div>
+            {/* Recent Activity */}
+            <Panel style={{ padding: 26 }}>
+              <SectionTitle sub="Últimas partidas">Actividad Reciente</SectionTitle>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {!recent || recent.length === 0 ? (
+                  <p style={{ fontSize: 13.5, color: "rgba(255,255,255,0.45)" }}>No hay partidas recientes.</p>
+                ) : (
+                  recent.map((m, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 14,
+                        padding: "12px 14px",
+                        borderRadius: 12,
+                        background: "rgba(255,255,255,0.02)",
+                        boxShadow: `inset 4px 0 0 ${m.win ? C.win : C.loss}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: 8,
+                          borderRadius: 10,
+                          background: m.win ? "rgba(47,191,138,0.12)" : "rgba(255,90,100,0.12)",
+                          color: m.win ? C.win : C.loss,
+                          display: "inline-flex",
+                        }}
+                      >
+                        <MessageSquare size={16} />
                       </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: "#fff" }}>
+                          {m.queueName ?? "Partida"}
+                        </p>
+                        <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.5)" }}>
+                          <span style={{ color: m.win ? C.win : C.loss, fontWeight: 700 }}>
+                            {m.win ? "Victoria" : "Derrota"}
+                          </span>{" "}
+                          • {m.championName ?? "?"} • {m.duration ? Math.round(m.duration / 60) : 0}m
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Panel>
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div style={{ display: "flex", flexDirection: "column", gap: 24, minWidth: 0 }}>
             {/* Profile Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UserIcon className="h-5 w-5" />
-                  Mi Perfil
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center mb-4">
-                  <div className="w-16 h-16 bg-gradient-primary rounded-full mx-auto mb-3 flex items-center justify-center">
-                    <span className="text-xl font-bold text-primary-foreground">
-                      {user?.name?.[0] || "U"}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold">{user?.name || "Usuario"}</h3>
-                  <p className="text-sm text-muted-foreground">{user?.email}</p>
-                  {overview?.profile?.gameName && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {overview.profile.gameName}#{overview.profile.tagLine}
-                    </p>
-                  )}
-                </div>
+            <Panel style={{ padding: 26 }}>
+              <SectionTitle>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <UserIcon size={15} /> Mi Perfil
+                </span>
+              </SectionTitle>
 
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm">Campeón Favorito</span>
-                    <span className="text-sm font-medium">{s.favoriteChampion ?? "—"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm">Publicaciones</span>
-                    <span className="text-sm font-medium">{s.socialPosts ?? 0}</span>
-                  </div>
+              <div style={{ textAlign: "center", marginBottom: 18 }}>
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: "50%",
+                    margin: "0 auto 12px",
+                    display: "grid",
+                    placeItems: "center",
+                    background: `linear-gradient(135deg, ${C.red}, #3b0000)`,
+                    border: `2px solid rgba(225,36,46,0.4)`,
+                  }}
+                >
+                  <span style={{ fontFamily: FONT_COND, fontWeight: 800, fontSize: 22, color: "#fff" }}>
+                    {user?.name?.[0]?.toUpperCase() || "U"}
+                  </span>
                 </div>
+                <h3 style={{ margin: 0, fontFamily: FONT_COND, fontWeight: 700, fontSize: 17, color: "#fff" }}>
+                  {user?.name || "Usuario"}
+                </h3>
+                <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "rgba(255,255,255,0.45)" }}>{user?.email}</p>
+                {overview?.profile?.gameName && (
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: C.gold }}>
+                    {overview.profile.gameName}#{overview.profile.tagLine}
+                  </p>
+                )}
+              </div>
 
-                <Button variant="outline" className="w-full mt-4">
-                  Editar Perfil
-                </Button>
-              </CardContent>
-            </Card>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
+                  <span style={{ color: "rgba(255,255,255,0.6)" }}>Campeón Favorito</span>
+                  <span style={{ fontWeight: 600, color: "#fff" }}>{s.favoriteChampion ?? "—"}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
+                  <span style={{ color: "rgba(255,255,255,0.6)" }}>Publicaciones</span>
+                  <span style={{ fontWeight: 600, color: "#fff" }}>{s.socialPosts ?? 0}</span>
+                </div>
+              </div>
+
+              <button
+                style={{
+                  width: "100%",
+                  marginTop: 18,
+                  height: 40,
+                  background: "transparent",
+                  color: "rgba(255,255,255,0.75)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 10,
+                  fontFamily: FONT_BODY,
+                  fontWeight: 600,
+                  fontSize: 13.5,
+                  cursor: "pointer",
+                  transition: "border-color .16s, color .16s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(225,36,46,0.5)";
+                  e.currentTarget.style.color = "#fff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+                  e.currentTarget.style.color = "rgba(255,255,255,0.75)";
+                }}
+              >
+                Editar Perfil
+              </button>
+            </Panel>
 
             {/* Next Tournament */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Próximo Torneo
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Próximamente…</p>
-                </div>
-              </CardContent>
-            </Card>
+            <Panel style={{ padding: 26 }}>
+              <SectionTitle>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <Calendar size={15} /> Próximo Torneo
+                </span>
+              </SectionTitle>
+              <p style={{ textAlign: "center", fontSize: 13.5, color: "rgba(255,255,255,0.45)", margin: "6px 0" }}>
+                Próximamente…
+              </p>
+            </Panel>
           </div>
         </div>
 
-        {err && <div className="text-sm text-destructive mt-6">{err}</div>}
+        {err && <div style={{ fontSize: 13, color: C.loss, marginTop: 22 }}>{err}</div>}
       </div>
+
+      <style>{`
+        @media (max-width: 900px) {
+          .atak-dash-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </div>
   );
 };

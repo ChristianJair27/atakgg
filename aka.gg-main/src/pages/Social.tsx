@@ -9,6 +9,7 @@ import {
   RefreshCw, Lock, Plus,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ScrollVideoBg } from '@/components/ScrollVideoBg';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Post {
@@ -159,8 +160,14 @@ function PostCard({
   };
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-md
-      hover:border-white/[0.12] transition-all duration-200 overflow-hidden group">
+    <div className="rounded-2xl transition-all duration-200 overflow-hidden group hover:-translate-y-0.5"
+      style={{
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 22%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)',
+        backdropFilter: 'blur(20px) saturate(120%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
+      }}>
       <div className="p-5">
         {/* Header */}
         <div className="flex items-start gap-3 mb-4">
@@ -276,9 +283,18 @@ function ComposeBox({ onPosted }: { onPosted: (post: Post) => void }) {
   };
 
   return (
-    <div className={`rounded-2xl border transition-all duration-300 mb-6 overflow-hidden ${
-      focused ? 'border-red-500/40 shadow-[0_0_30px_rgba(239,68,68,0.12)]' : 'border-white/[0.08]'
-    } bg-white/[0.03] backdrop-blur-md`}>
+    <div className={`rounded-2xl transition-all duration-300 mb-6 overflow-hidden ${
+      focused ? 'shadow-[0_0_30px_rgba(239,68,68,0.16)]' : ''
+    }`}
+      style={{
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 22%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)',
+        backdropFilter: 'blur(20px) saturate(120%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+        boxShadow: focused
+          ? 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 30px rgba(239,68,68,0.16)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
+      }}>
       <form onSubmit={submit}>
         <div className="p-5">
           <div className="flex gap-3">
@@ -396,15 +412,16 @@ export default function Social() {
   return (
     <div className="min-h-screen text-white"
       onMouseMove={e => setMousePos({ x:e.clientX, y:e.clientY })}>
-      <div className="fixed inset-0 bg-black -z-20" />
+      {/* Living scroll-scrubbed dagger background (shared) */}
+      <ScrollVideoBg />
       <div className="fixed inset-0 -z-10 pointer-events-none"
-        style={{ background:'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(29,78,127,0.2) 0%, transparent 60%)' }} />
+        style={{ background:'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(29,78,127,0.16) 0%, transparent 60%)' }} />
       <div className="fixed inset-0 pointer-events-none -z-10"
         style={{ background:`radial-gradient(450px circle at ${mousePos.x}px ${mousePos.y}px, rgba(59,130,246,0.05), transparent 70%)` }} />
       <div className="fixed inset-0 -z-10 opacity-[0.025]"
         style={{ backgroundImage:'linear-gradient(rgba(255,255,255,0.5) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.5) 1px,transparent 1px)', backgroundSize:'60px 60px' }} />
 
-      <div className="max-w-2xl mx-auto px-4 py-14">
+      <div className="max-w-2xl mx-auto px-4 py-14 relative z-[1]">
 
         {/* Header */}
         <div ref={headerRef} className="text-center mb-10">
@@ -426,7 +443,14 @@ export default function Social() {
         {isAuth ? (
           <ComposeBox onPosted={onPosted} />
         ) : (
-          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 text-center mb-6">
+          <div className="rounded-2xl p-6 text-center mb-6"
+            style={{
+              background:
+                'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)',
+              backdropFilter: 'blur(20px) saturate(120%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
+            }}>
             <Lock className="h-8 w-8 text-gray-600 mx-auto mb-3" />
             <p className="text-gray-400 text-sm mb-4">Inicia sesión para publicar en la comunidad</p>
             <Link to="/login"
