@@ -6,7 +6,9 @@ import { LiveClientService } from '../services/live-client.service';
 
 const owApp = electronApp as overwolf.OverwolfApp;
 
-const ATAK_URL = process.env.ATAK_URL ?? 'http://192.168.1.79:8080/';
+// Default to localhost so it survives router/DHCP IP changes. Override with ATAK_URL env if you
+// need to reach the dev server from another device on the LAN.
+const ATAK_URL = process.env.ATAK_URL ?? 'http://localhost:8080/';
 
 export class MainWindowController {
   private browserWindow: BrowserWindow = null;
