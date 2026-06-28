@@ -18,6 +18,8 @@ interface TournamentBracketProps {
   maxRound: number;
   isActive: boolean;
   tournamentId: string;
+  canViewCodes?: boolean;
+  canManage?: boolean;
   onActivateMatch: (matchId: string) => Promise<string | null>;
   onReportResult: (matchId: string, winner: string, score1: number, score2: number) => void;
   reportingMatch: string | null;
@@ -85,11 +87,12 @@ function ReportForm({ match, onReport, loading }: {
   );
 }
 
-function MatchCard({ match, isActive, isReporting, onActivate, onReport, onToggleStats, statsOpen }: {
+function MatchCard({ match, isActive, isReporting, onActivate, onReport, onToggleStats, statsOpen, canViewCodes, canManage }: {
   match: BracketMatch; isActive: boolean; isReporting: boolean;
   onActivate: () => Promise<string | null>;
   onReport: (winner: string, s1: number, s2: number) => void;
   onToggleStats: () => void; statsOpen: boolean;
+  canViewCodes?: boolean; canManage?: boolean;
 }) {
   const [showReport, setShowReport] = useState(false);
   const [activating, setActivating] = useState(false);
@@ -145,13 +148,18 @@ function MatchCard({ match, isActive, isReporting, onActivate, onReport, onToggl
         </div>
       </div>
 
-      {match.code && (
+      {canViewCodes && match.code && (
         <div className="px-2 pb-1.5 pt-0.5 border-t border-white/[0.06]">
           <CopyCode code={match.code} />
         </div>
       )}
+      {!canViewCodes && (match.matchStatus === 'active' || match.matchStatus === 'ready') && !isEmpty && (
+        <div className="px-2 pb-1.5 pt-0.5 border-t border-white/[0.06]">
+          <p className="text-[10px] text-gray-600 text-center py-1">Código solo para jugadores inscritos</p>
+        </div>
+      )}
 
-      {isActive && !isEmpty && match.matchStatus !== 'complete' && match.team1 !== 'BYE' && match.team2 !== 'BYE' && (
+      {canManage && isActive && !isEmpty && match.matchStatus !== 'complete' && match.team1 !== 'BYE' && match.team2 !== 'BYE' && (
         <div className="px-2 pb-2 space-y-1">
           {match.matchStatus === 'ready' && !match.code && (
             <Button size="sm" onClick={handleActivate} disabled={activating}
@@ -207,7 +215,8 @@ function Connector({ matchIndex, vSpan }: { matchIndex: number; vSpan: number })
 }
 
 export function TournamentBracket({
-  bracket, maxRound, isActive, tournamentId, onActivateMatch, onReportResult, reportingMatch,
+  bracket, maxRound, isActive, tournamentId, canViewCodes = false, canManage = false,
+  onActivateMatch, onReportResult, reportingMatch,
 }: TournamentBracketProps) {
   const [expandedStats, setExpandedStats] = useState<string | null>(null);
   const rounds = Array.from({ length: maxRound }, (_, i) => i + 1);
@@ -254,6 +263,8 @@ export function TournamentBracket({
                         onReport={(w, s1, s2) => onReportResult(match.id, w, s1, s2)}
                         statsOpen={expandedStats === match.id}
                         onToggleStats={() => setExpandedStats(expandedStats === match.id ? null : match.id)}
+                        canViewCodes={canViewCodes}
+                        canManage={canManage}
                       />
                       {round < maxRound && <Connector matchIndex={mi} vSpan={vSpan} />}
                     </div>

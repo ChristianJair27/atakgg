@@ -7,6 +7,8 @@ export const qk = {
   tournaments: () => ["tournaments"] as const,
   tournament: (id: string) => ["tournament", id] as const,
   registrations: (id: string) => ["tournament", id, "registrations"] as const,
+  invitations: () => ["tournament-invitations"] as const,
+  tournamentDashboard: () => ["tournament-dashboard"] as const,
 
   overview: () => ["overview"] as const,
 

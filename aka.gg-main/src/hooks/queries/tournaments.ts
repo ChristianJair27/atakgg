@@ -27,6 +27,8 @@ export interface BracketMatch {
   gameRegion?: string;
 }
 
+export type ViewerAccess = "owner" | "participant" | "public";
+
 export interface Tournament {
   id: string;
   name: string;
@@ -44,6 +46,33 @@ export interface Tournament {
   bracket?: BracketMatch[];
   checkinDeadline?: string;
   createdBy?: number;
+  viewerAccess?: ViewerAccess;
+}
+
+export interface TournamentDashboardData {
+  invitations: TournamentInvitation[];
+  myTeams: Array<{
+    tournamentId: string;
+    tournamentName: string;
+    phase: string;
+    teamName: string;
+    captainRiotId: string;
+    players: RosterPlayer[];
+    checkedIn: boolean;
+    activeMatchCode: string | null;
+    activeMatchId: string | null;
+    isCaptain: boolean;
+  }>;
+  administrating: Array<{
+    id: string;
+    name: string;
+    phase: string;
+    participants: number;
+    maxParticipants: number;
+    startDate: string;
+    codesAvailable?: number;
+  }>;
+  linkedRiotId: string | null;
 }
 
 export function useTournaments() {
@@ -56,7 +85,7 @@ export function useTournaments() {
   });
 }
 
-export function useTournament(id?: string) {
+export function useTournament(id?: string, options?: { pollWhenActive?: boolean }) {
   return useQuery({
     queryKey: id ? qk.tournament(id) : qk.tournament("_"),
     enabled: Boolean(id),
@@ -64,17 +93,44 @@ export function useTournament(id?: string) {
       const { data } = await axiosInstance.get<Tournament>(`/api/tournaments/${id}`);
       return data;
     },
+    refetchInterval: (query) => {
+      if (!options?.pollWhenActive) return false;
+      const phase = query.state.data?.phase;
+      return phase === "active" ? 20_000 : false;
+    },
   });
+}
+
+export interface RosterPlayer {
+  name: string;
+  riotId?: string;
+  puuid?: string;
+  userId?: number;
+  inviteEmail?: string;
+  inviteStatus?: "pending" | "accepted";
 }
 
 export interface Registration {
   teamName: string;
   captainRiotId: string;
-  players: Array<{ name: string; riotId: string }>;
+  players: RosterPlayer[];
   contact: string;
   registeredAt: string;
   checkedIn: boolean;
   checkedInAt?: string;
+}
+
+export interface TournamentInvitation {
+  id: number;
+  tournamentId: string;
+  tournamentName: string;
+  teamName: string;
+  invitedByUserId: number;
+  invitedByName?: string;
+  slotIndex: number;
+  playerName?: string;
+  status: "pending" | "accepted" | "declined";
+  createdAt: string;
 }
 
 export function useRegistrations(id?: string) {
@@ -96,8 +152,8 @@ export function useRegistrations(id?: string) {
 
 interface RegisterTeamInput {
   teamName: string;
-  captainRiotId: string;
-  players: Array<{ name: string; riotId: string }>;
+  captainRiotId?: string;
+  players: RosterPlayer[];
   contact: string;
 }
 
@@ -247,6 +303,83 @@ interface ReportResultInput {
   winner: string;
   score1: number;
   score2: number;
+}
+
+export function useTournamentDashboard() {
+  const isAuth = Boolean(typeof localStorage !== "undefined" && localStorage.getItem("access_token"));
+  return useQuery({
+    queryKey: qk.tournamentDashboard(),
+    enabled: isAuth,
+    queryFn: async () => {
+      const { data } = await axiosInstance.get<TournamentDashboardData>("/api/tournaments/me/dashboard");
+      return data;
+    },
+    refetchInterval: 25_000,
+  });
+}
+
+export function useTournamentInvitations() {
+  const isAuth = Boolean(typeof localStorage !== "undefined" && localStorage.getItem("access_token"));
+  return useQuery({
+    queryKey: qk.invitations(),
+    enabled: isAuth,
+    queryFn: async () => {
+      const { data } = await axiosInstance.get<TournamentInvitation[]>("/api/tournaments/invitations/me");
+      return Array.isArray(data) ? data : [];
+    },
+    refetchInterval: 30_000,
+  });
+}
+
+export function useRespondInvitation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ invId, action }: { invId: number; action: "accept" | "decline" }) => {
+      const { data } = await axiosInstance.post(`/api/tournaments/invitations/${invId}/respond`, { action });
+      return data;
+    },
+    onSuccess: (_data, { action }) => {
+      toast.success(action === "accept" ? "¡Invitación aceptada!" : "Invitación rechazada");
+    },
+    onError: (e: any) => {
+      const code = e?.response?.data?.code;
+      if (code === "RIOT_NOT_LINKED") {
+        toast.error("Vincula tu cuenta de LoL primero", {
+          description: "Ve a tu Dashboard y conecta tu Riot ID antes de aceptar.",
+        });
+      } else {
+        toast.error("No se pudo responder la invitación", {
+          description: e?.response?.data?.error || e?.message,
+        });
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: qk.invitations() });
+      qc.invalidateQueries({ queryKey: qk.tournamentDashboard() });
+      qc.invalidateQueries({ queryKey: qk.tournaments() });
+    },
+  });
+}
+
+export function useSyncGames(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await axiosInstance.post(`/api/tournaments/${id}/sync-games`);
+      return data as { synced: number; details: unknown[] };
+    },
+    onSuccess: (data) => {
+      toast.success(`Sincronización completa`, {
+        description: `${data.synced} partida(s) actualizada(s)`,
+      });
+    },
+    onError: (e: any) =>
+      toast.error("Error al sincronizar", { description: e?.response?.data?.error || e?.message }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: qk.tournament(id) });
+      qc.invalidateQueries({ queryKey: qk.tournaments() });
+    },
+  });
 }
 
 export function useReportResult(id: string) {

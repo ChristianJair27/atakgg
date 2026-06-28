@@ -1,7 +1,8 @@
 // src/pages/Tournaments.tsx — glass/space · GSAP · MySQL-backed
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from '@/components/ui/sonner';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -253,6 +254,7 @@ function StatBar({ tournaments }: { tournaments: Tournament[] }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TournamentsPage() {
+  const navigate = useNavigate();
   const [filter,             setFilter]             = useState<string>('todos');
   const [registerOpen,       setRegisterOpen]       = useState(false);
   const [createOpen,         setCreateOpen]         = useState(false);
@@ -357,7 +359,15 @@ export default function TournamentsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               {filtered.map((t, i) => (
                 <TournamentCard key={t.id} t={t} index={i}
-                  onRegister={sel => { setSelectedTournament(sel); setRegisterOpen(true); }} />
+                  onRegister={sel => {
+                    if (!isAuth) {
+                      toast.error('Inicia sesión para inscribir tu equipo');
+                      navigate('/login');
+                      return;
+                    }
+                    setSelectedTournament(sel);
+                    setRegisterOpen(true);
+                  }} />
               ))}
             </div>
           ) : (

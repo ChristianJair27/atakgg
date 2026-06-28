@@ -21,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useOverview } from "@/hooks/queries/players";
 import { useTournaments } from "@/hooks/queries/tournaments";
 import { qk } from "@/hooks/queries/keys";
+import { TournamentDashboardPanel } from "@/components/TournamentDashboardPanel";
 
 // ─── Brand tokens (shared ATAK vocabulary) ──────────────────────────────────
 const C = {
@@ -480,6 +481,8 @@ const Dashboard = () => {
               : "Aquí está tu resumen de actividad y estadísticas"}
           </p>
         </motion.div>
+
+        <TournamentDashboardPanel />
 
         {/* Quick Stats */}
         <div

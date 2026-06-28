@@ -28,9 +28,15 @@ const riotAxios = axios.create({
 // ─── Provider ────────────────────────────────────────────────────────────────
 // Un provider se crea una vez y se reutiliza para todos los torneos
 export const createProvider = async (): Promise<{ id: number }> => {
-  const callbackUrl =
+  const base =
     process.env.TOURNAMENT_CALLBACK_URL ||
     'https://atak.gg/api/tournaments/tournament-callback';
+  // Riot does not sign callbacks, so embed a shared secret in the registered URL.
+  // The callback handler rejects any POST whose ?key= doesn't match.
+  const secret = process.env.TOURNAMENT_CALLBACK_SECRET;
+  const callbackUrl = secret
+    ? `${base}${base.includes('?') ? '&' : '?'}key=${encodeURIComponent(secret)}`
+    : base;
 
   try {
     const { data } = await riotAxios.post(`/lol/${API_PATH}/v5/providers`, {

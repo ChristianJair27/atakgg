@@ -5,7 +5,10 @@ import {
   getLobbyEvents, getCodeInfo, getGamesByCode,
 } from '../services/riot-tournament.service.js';
 import { requireAuth } from '../middlewares/requireAuth.js';
+import { optionalAuth } from '../middlewares/optionalAuth.js';
 import { getMatchById, getMatchIdsByPUUID, getAccountByRiotId, getSummonerByPUUID, getLiveGame, getLiveGameByPuuid } from '../services/riot.js';
+import { startTournamentBackgroundSync, syncTournamentFull, recoverGameFromRoster } from '../services/tournament-sync.service.js';
+import { sendTournamentInvitationEmail, isDeliverableEmail } from '../services/mail.service.js';
 import { pool } from '../db.js';
 
 const router = Router();
@@ -28,12 +31,32 @@ interface BracketMatch {
   // Used to (a) build the code allowlist and (b) attribute the winning team
   // from the Riot callback's winningTeam puuids.
   team1Puuids?: string[]; team2Puuids?: string[];
+  // Epoch ms when this match's tournament code was generated/activated. Used as a
+  // hard lower bound so roster-history recovery can never pick a game played
+  // BEFORE the code existed (e.g. an old scrim/custom in the captain's history).
+  codeActivatedAt?: number;
+}
+interface RosterPlayer {
+  name: string;
+  riotId?: string;
+  puuid?: string;
+  userId?: number;
+  inviteEmail?: string;
+  inviteStatus?: 'pending' | 'accepted';
 }
 interface TeamRegistration {
   teamName: string; captainRiotId: string;
-  players: Array<{ name: string; riotId: string }>;
+  players: RosterPlayer[];
   contact: string; registeredAt: string;
   checkedIn: boolean; checkedInAt?: string;
+  registeredBy?: number;
+}
+interface TournamentInvitation {
+  id: number; tournamentId: string; tournamentName: string;
+  teamName: string; invitedByUserId: number; invitedByName?: string;
+  slotIndex: number; playerName?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
 }
 interface TournamentData {
   id: string; name: string; phase: TournamentPhase;
@@ -111,12 +134,31 @@ async function initTables() {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tournament_invitations (
+      id                  INT AUTO_INCREMENT PRIMARY KEY,
+      tournament_id       VARCHAR(200) NOT NULL,
+      team_name           VARCHAR(500) NOT NULL,
+      invited_user_id     INT          NOT NULL,
+      invited_by_user_id  INT          NOT NULL,
+      slot_index          INT          DEFAULT 0,
+      player_name         VARCHAR(200),
+      status              VARCHAR(20)  DEFAULT 'pending',
+      created_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+      responded_at        VARCHAR(50),
+      UNIQUE KEY unique_invite (tournament_id, team_name(100), invited_user_id),
+      INDEX idx_invited_user (invited_user_id),
+      INDEX idx_tournament_inv (tournament_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   // New columns (idempotent)
   for (const col of [
     `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS region VARCHAR(10) DEFAULT 'la1'`,
     `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS logo_url VARCHAR(1000)`,
     `ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS banner_url VARCHAR(1000)`,
     `ALTER TABLE tournament_registrations ADD COLUMN IF NOT EXISTS logo_url VARCHAR(1000)`,
+    `ALTER TABLE tournament_registrations ADD COLUMN IF NOT EXISTS registered_by INT`,
+    `ALTER TABLE tournament_registrations ADD COLUMN IF NOT EXISTS captain_user_id INT`,
   ]) { await pool.query(col).catch(() => {}); }
   // Seed only if empty
   const [[{ cnt }]] = await pool.query<any[]>('SELECT COUNT(*) AS cnt FROM tournaments');
@@ -146,7 +188,9 @@ async function initTables() {
     }
   }
 }
-initTables().catch(err => console.error('[tournaments] initTables error:', err.message));
+initTables()
+  .then(() => startTournamentBackgroundSync())
+  .catch(err => console.error('[tournaments] initTables error:', err.message));
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────
 function parseJson(v: any) { if (!v) return undefined; return typeof v === 'string' ? JSON.parse(v) : v; }
@@ -219,17 +263,77 @@ async function saveT(t: TournamentData) {
   );
 }
 
-function serialize(t: TournamentData) {
+type ViewerAccess = 'owner' | 'participant' | 'public';
+
+function sanitizeBracketMatch(m: BracketMatch, access: ViewerAccess): BracketMatch {
+  if (access === 'owner' || access === 'participant') return m;
+  // Public: hide lobby codes + internal PUUIDs; keep gameId on completed matches for stats
+  return {
+    ...m,
+    code: null,
+    team1Puuids: undefined,
+    team2Puuids: undefined,
+  };
+}
+
+function sanitizeBracket(bracket: BracketMatch[] | undefined, access: ViewerAccess) {
+  if (!bracket) return undefined;
+  return bracket.map(m => sanitizeBracketMatch(m, access));
+}
+
+async function getViewerAccess(
+  t: TournamentData,
+  auth?: { userId: number; role: string }
+): Promise<ViewerAccess> {
+  if (!auth) return 'public';
+  if (auth.role === 'admin' || auth.userId === t.createdBy) return 'owner';
+
+  const linked = await getLinkedRiotAccount(auth.userId);
+  const linkedRiot = linked?.riotId?.toLowerCase();
+  const linkedPuuid = linked?.puuid;
+
+  const regs = await getRegs(t.id);
+  for (const reg of regs) {
+    if (reg.registeredBy === auth.userId) return 'participant';
+    if (linkedRiot && reg.captainRiotId?.toLowerCase() === linkedRiot) return 'participant';
+    for (const p of reg.players || []) {
+      if (p.userId === auth.userId) return 'participant';
+      if (linkedPuuid && p.puuid === linkedPuuid) return 'participant';
+      if (linkedRiot && p.riotId?.toLowerCase() === linkedRiot) return 'participant';
+    }
+  }
+
+  const [[acceptedInv]] = await pool.query<any[]>(
+    "SELECT id FROM tournament_invitations WHERE tournament_id=? AND invited_user_id=? AND status='accepted' LIMIT 1",
+    [t.id, auth.userId]
+  );
+  if (acceptedInv) return 'participant';
+
+  const [[inv]] = await pool.query<any[]>(
+    "SELECT id FROM tournament_invitations WHERE tournament_id=? AND invited_user_id=? AND status='pending' LIMIT 1",
+    [t.id, auth.userId]
+  );
+  if (inv) return 'participant';
+
+  return 'public';
+}
+
+function serialize(t: TournamentData, access: ViewerAccess = 'public') {
   const status = (t.phase==='registration'||t.phase==='checkin') ? 'abiertas'
                : t.phase==='active' ? 'progreso' : 'finalizado';
+  const isPrivileged = access === 'owner' || access === 'participant';
   return {
     id:t.id, name:t.name, phase:t.phase, status,
     participants:t.participants, maxParticipants:t.maxParticipants,
     prize:t.prize, startDate:t.startDate, format:t.format, description:t.description,
-    standings:t.standings, riotTournamentId:t.riotTournamentId,
-    bracket:t.bracket, checkinDeadline:t.checkinDeadline,
-    codesAvailable:t.codePool.length, createdBy:t.createdBy,
+    standings:t.standings,
+    riotTournamentId: isPrivileged ? t.riotTournamentId : undefined,
+    bracket: sanitizeBracket(t.bracket, access),
+    checkinDeadline:t.checkinDeadline,
+    codesAvailable: access === 'owner' ? t.codePool.length : undefined,
+    createdBy: access === 'owner' ? t.createdBy : undefined,
     region:t.region||'la1', logoUrl:t.logoUrl, bannerUrl:t.bannerUrl,
+    viewerAccess: access,
   };
 }
 
@@ -243,7 +347,84 @@ async function getRegs(tournamentId: string): Promise<TeamRegistration[]> {
     players: parseJson(r.players) || [],
     contact: r.contact || '', registeredAt: r.registered_at,
     checkedIn: !!r.checked_in, checkedInAt: r.checked_in_at || undefined,
+    registeredBy: r.registered_by || undefined,
   }));
+}
+
+async function getLinkedRiotAccount(userId: number) {
+  const [[row]] = await pool.query<any[]>(
+    'SELECT platform, puuid, game_name, tag_line FROM user_riot_accounts WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  if (!row) return null;
+  return {
+    platform: row.platform as string,
+    puuid: row.puuid as string,
+    gameName: row.game_name as string,
+    tagLine: row.tag_line as string,
+    riotId: `${row.game_name}#${row.tag_line}`,
+  };
+}
+
+async function resolveRiotIdToPuuid(riotId: string, platform: string): Promise<{ puuid: string; gameName: string; tagLine: string } | null> {
+  const [gameName, tagLine] = riotId.split('#');
+  if (!gameName || !tagLine) return null;
+  try {
+    const account = await getAccountByRiotId(gameName.trim(), tagLine.trim(), { platformHint: platform });
+    if (!account?.puuid) return null;
+    return { puuid: account.puuid, gameName: gameName.trim(), tagLine: tagLine.trim() };
+  } catch { return null; }
+}
+
+async function findUserByEmail(email: string): Promise<number | null> {
+  const [[row]] = await pool.query<any[]>(
+    'SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1',
+    [email.trim()]
+  );
+  return row ? Number(row.id) : null;
+}
+
+async function findUserByRiotId(riotId: string): Promise<number | null> {
+  const [gameName, tagLine] = riotId.split('#');
+  if (!gameName || !tagLine) return null;
+  const [[row]] = await pool.query<any[]>(
+    `SELECT user_id FROM user_riot_accounts
+     WHERE LOWER(game_name) = LOWER(?) AND LOWER(tag_line) = LOWER(?) LIMIT 1`,
+    [gameName.trim(), tagLine.trim()]
+  );
+  return row ? Number(row.user_id) : null;
+}
+
+async function createInvitation(
+  tournamentId: string, teamName: string, invitedUserId: number,
+  invitedByUserId: number, slotIndex: number, playerName?: string,
+  emailContext?: { tournamentName: string; inviterName: string }
+) {
+  await pool.query(
+    `INSERT INTO tournament_invitations
+       (tournament_id, team_name, invited_user_id, invited_by_user_id, slot_index, player_name, status)
+     VALUES (?,?,?,?,?,?,'pending')
+     ON DUPLICATE KEY UPDATE status='pending', slot_index=VALUES(slot_index), player_name=VALUES(player_name)`,
+    [tournamentId, teamName, invitedUserId, invitedByUserId, slotIndex, playerName || null]
+  );
+
+  if (emailContext) {
+    const [[invitee]] = await pool.query<any[]>(
+      'SELECT email, name FROM users WHERE id = ? LIMIT 1',
+      [invitedUserId]
+    );
+    if (invitee?.email && isDeliverableEmail(invitee.email)) {
+      sendTournamentInvitationEmail({
+        toEmail: invitee.email,
+        toName: invitee.name || undefined,
+        inviterName: emailContext.inviterName,
+        tournamentName: emailContext.tournamentName,
+        teamName,
+        tournamentId,
+        playerSlotName: playerName,
+      }).catch(err => console.error('[invite-email]', err.message));
+    }
+  }
 }
 
 function isOwner(req: any, t: TournamentData) {
@@ -444,7 +625,8 @@ async function resolveTeamPuuids(t: TournamentData, teamName: string | null): Pr
   if (!reg) return [];
   const platform = t.region || 'la1';
   const riotIds = [...new Set(
-    [reg.captainRiotId, ...(reg.players || []).map(p => p.riotId)].filter(Boolean)
+    [reg.captainRiotId, ...(reg.players || []).map(p => p.riotId)]
+      .filter((id): id is string => Boolean(id))
   )];
   const puuids: string[] = [];
   for (const rid of riotIds) {
@@ -496,6 +678,7 @@ async function assignCodeToMatch(t: TournamentData, mi: number): Promise<string 
 
   match.code = code;
   match.matchStatus = code ? 'active' : 'ready';
+  if (code) match.codeActivatedAt = Date.now();
   return code;
 }
 
@@ -541,11 +724,18 @@ async function applyResult(
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
-// GET all
-router.get('/', async (_req, res) => {
+// GET all — list never includes bracket/codes; detail uses GET /:id
+router.get('/', optionalAuth, async (req: any, res) => {
   try {
     const [rows] = await pool.query<any[]>('SELECT * FROM tournaments ORDER BY created_at DESC');
-    res.json(rows.map(r => serialize(rowToTournament(r))));
+    const out = await Promise.all(rows.map(async (r) => {
+      const t = rowToTournament(r);
+      const access = await getViewerAccess(t, req.auth);
+      const s = serialize(t, access);
+      const { bracket: _b, ...listItem } = s;
+      return listItem;
+    }));
+    res.json(out);
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
@@ -595,6 +785,19 @@ router.post('/', requireAuth, async (req: any, res) => {
 // shortCode scan — then records the gameId and auto-advances the bracket using
 // the winningTeam PUUIDs, so no manual result report is needed.
 router.post('/tournament-callback', async (req, res) => {
+  // Shared-secret gate — Riot doesn't sign callbacks, so the provider URL carries
+  // a ?key= that only we know. Without this, anyone could POST a forged result and
+  // advance a bracket. If the secret isn't configured we allow it (back-compat) but warn.
+  const secret = process.env.TOURNAMENT_CALLBACK_SECRET;
+  if (secret) {
+    if ((req.query as any).key !== secret) {
+      console.warn('[Callback] rechazado: key inválida o ausente');
+      return res.status(403).send('Forbidden');
+    }
+  } else {
+    console.warn('[Callback] TOURNAMENT_CALLBACK_SECRET no configurado — callback sin autenticar (configúralo para PROD)');
+  }
+
   const body = req.body || {};
   const { shortCode, gameId, region } = body;
   const winningTeam = body.winningTeam ?? body.winningTeamPlayers ?? [];
@@ -653,8 +856,109 @@ router.post('/tournament-callback', async (req, res) => {
     }
 
     await saveT(t);
+    // Async: detect stats + auto-result if callback winner attribution failed
+    syncTournamentFull(t.id).catch(e => console.error('[Callback] sync error:', e.message));
   } catch (err) { console.error('[Callback] error:', err); }
   res.status(200).send('OK');
+});
+
+// GET /invitations/me — pending tournament invitations for the logged-in user
+router.get('/invitations/me', requireAuth, async (req: any, res) => {
+  try {
+    const userId = req.auth.userId;
+    const [rows] = await pool.query<any[]>(
+      `SELECT i.*, t.name AS tournament_name, u.name AS invited_by_name
+       FROM tournament_invitations i
+       JOIN tournaments t ON t.id = i.tournament_id
+       LEFT JOIN users u ON u.id = i.invited_by_user_id
+       WHERE i.invited_user_id = ? AND i.status = 'pending'
+       ORDER BY i.created_at DESC`,
+      [userId]
+    );
+    const invitations: TournamentInvitation[] = rows.map(r => ({
+      id: r.id,
+      tournamentId: r.tournament_id,
+      tournamentName: r.tournament_name,
+      teamName: r.team_name,
+      invitedByUserId: r.invited_by_user_id,
+      invitedByName: r.invited_by_name || undefined,
+      slotIndex: r.slot_index,
+      playerName: r.player_name || undefined,
+      status: r.status,
+      createdAt: r.created_at,
+    }));
+    res.json(invitations);
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /invitations/:invId/respond — accept or decline (accept uses linked LoL account)
+router.post('/invitations/:invId/respond', requireAuth, async (req: any, res) => {
+  const { action } = req.body;
+  if (action !== 'accept' && action !== 'decline') {
+    return res.status(400).json({ error: 'action debe ser accept o decline' });
+  }
+  try {
+    const userId = req.auth.userId;
+    const [[inv]] = await pool.query<any[]>(
+      'SELECT * FROM tournament_invitations WHERE id = ? AND invited_user_id = ? AND status = ?',
+      [req.params.invId, userId, 'pending']
+    );
+    if (!inv) return res.status(404).json({ error: 'Invitación no encontrada' });
+
+    if (action === 'decline') {
+      await pool.query(
+        "UPDATE tournament_invitations SET status='declined', responded_at=? WHERE id=?",
+        [new Date().toISOString(), inv.id]
+      );
+      return res.json({ success: true, status: 'declined' });
+    }
+
+    const linked = await getLinkedRiotAccount(userId);
+    if (!linked) {
+      return res.status(400).json({
+        error: 'Vincula tu cuenta de LoL en tu perfil antes de aceptar la invitación',
+        code: 'RIOT_NOT_LINKED',
+      });
+    }
+
+    const [[reg]] = await pool.query<any[]>(
+      'SELECT * FROM tournament_registrations WHERE tournament_id=? AND team_name=?',
+      [inv.tournament_id, inv.team_name]
+    );
+    if (!reg) return res.status(404).json({ error: 'Equipo no encontrado' });
+
+    const players: RosterPlayer[] = parseJson(reg.players) || [];
+    const slot = Number(inv.slot_index);
+    if (slot < 0 || slot >= players.length) {
+      return res.status(400).json({ error: 'Slot de jugador inválido' });
+    }
+
+    const [[userRow]] = await pool.query<any[]>('SELECT name FROM users WHERE id = ?', [userId]);
+    players[slot] = {
+      name: inv.player_name || userRow?.name || linked.gameName,
+      riotId: linked.riotId,
+      puuid: linked.puuid,
+      userId,
+      inviteStatus: 'accepted',
+    };
+
+    await pool.query(
+      'UPDATE tournament_registrations SET players=? WHERE id=?',
+      [JSON.stringify(players), reg.id]
+    );
+    await pool.query(
+      "UPDATE tournament_invitations SET status='accepted', responded_at=? WHERE id=?",
+      [new Date().toISOString(), inv.id]
+    );
+
+    res.json({
+      success: true,
+      status: 'accepted',
+      riotId: linked.riotId,
+      teamName: inv.team_name,
+      tournamentId: inv.tournament_id,
+    });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // GET /debug-list — list all tournament IDs (for debugging).
@@ -672,35 +976,224 @@ router.get('/debug-list', requireAuth, async (req: any, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// GET by id
-router.get('/:id', async (req, res) => {
+// GET /me/dashboard — invitations, teams, admin tournaments for logged-in user
+router.get('/me/dashboard', requireAuth, async (req: any, res) => {
   try {
-    const t = await getT(req.params.id);
-    if (!t) return res.status(404).json({ error:'Torneo no encontrado' });
-    res.json(serialize(t));
+    const userId = req.auth.userId;
+    const linked = await getLinkedRiotAccount(userId);
+    const linkedRiot = linked?.riotId?.toLowerCase();
+
+    const [invRows] = await pool.query<any[]>(
+      `SELECT i.*, t.name AS tournament_name, t.phase, u.name AS invited_by_name
+       FROM tournament_invitations i
+       JOIN tournaments t ON t.id = i.tournament_id
+       LEFT JOIN users u ON u.id = i.invited_by_user_id
+       WHERE i.invited_user_id = ? AND i.status = 'pending'
+       ORDER BY i.created_at DESC`,
+      [userId]
+    );
+
+    const [allTournaments] = await pool.query<any[]>('SELECT * FROM tournaments ORDER BY created_at DESC');
+    const myTeams: any[] = [];
+    const administrating: any[] = [];
+
+    for (const row of allTournaments) {
+      const t = rowToTournament(row);
+      if (t.createdBy === userId || (req.auth.role === 'admin' && t.createdBy)) {
+        administrating.push({
+          id: t.id, name: t.name, phase: t.phase,
+          participants: t.participants, maxParticipants: t.maxParticipants,
+          startDate: t.startDate, codesAvailable: t.codePool.length,
+        });
+      }
+
+      const regs = await getRegs(t.id);
+      for (const reg of regs) {
+        let isMember = reg.registeredBy === userId;
+        if (!isMember && linkedRiot && reg.captainRiotId?.toLowerCase() === linkedRiot) isMember = true;
+        if (!isMember) {
+          for (const p of reg.players || []) {
+            if (p.userId === userId || (linkedRiot && p.riotId?.toLowerCase() === linkedRiot)) {
+              isMember = true; break;
+            }
+          }
+        }
+        if (!isMember) continue;
+
+        const myMatch = (t.bracket || []).find(m =>
+          (m.team1 === reg.teamName || m.team2 === reg.teamName) &&
+          (m.matchStatus === 'active' || m.matchStatus === 'ready')
+        );
+
+        myTeams.push({
+          tournamentId: t.id,
+          tournamentName: t.name,
+          phase: t.phase,
+          teamName: reg.teamName,
+          captainRiotId: reg.captainRiotId,
+          players: reg.players,
+          checkedIn: reg.checkedIn,
+          activeMatchCode: myMatch?.code ?? null,
+          activeMatchId: myMatch?.id ?? null,
+          isCaptain: reg.registeredBy === userId || reg.captainRiotId?.toLowerCase() === linkedRiot,
+        });
+      }
+    }
+
+    res.json({
+      invitations: invRows.map(r => ({
+        id: r.id, tournamentId: r.tournament_id, tournamentName: r.tournament_name,
+        teamName: r.team_name, phase: r.phase,
+        invitedByName: r.invited_by_name, slotIndex: r.slot_index,
+        playerName: r.player_name, createdAt: r.created_at,
+      })),
+      myTeams,
+      administrating,
+      linkedRiotId: linked?.riotId ?? null,
+    });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// Register team
-router.post('/:id/register', requireAuth, async (req: any, res) => {
-  const { teamName, captainRiotId, players, contact } = req.body;
-  if (!teamName||!captainRiotId||!Array.isArray(players)||players.length<5)
-    return res.status(400).json({ error:'Datos incompletos (mínimo 5 jugadores)' });
+// GET by id
+router.get('/:id', optionalAuth, async (req: any, res) => {
   try {
     const t = await getT(req.params.id);
     if (!t) return res.status(404).json({ error:'Torneo no encontrado' });
-    if (t.phase!=='registration') return res.status(400).json({ error:'Inscripciones cerradas' });
-    if (t.participants>=t.maxParticipants) return res.status(400).json({ error:'Torneo lleno' });
+    const access = await getViewerAccess(t, req.auth);
+    res.json(serialize(t, access));
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// Register team — auto-fills captain from linked LoL account; validates Riot IDs; sends invitations
+router.post('/:id/register', requireAuth, async (req: any, res) => {
+  const { teamName, captainRiotId, players, contact } = req.body;
+  if (!teamName || !Array.isArray(players) || players.length < 5) {
+    return res.status(400).json({ error: 'Datos incompletos (mínimo 5 jugadores)' });
+  }
+  try {
+    const t = await getT(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (t.phase !== 'registration') return res.status(400).json({ error: 'Inscripciones cerradas' });
+    if (t.participants >= t.maxParticipants) return res.status(400).json({ error: 'Torneo lleno' });
+
+    const userId = req.auth.userId;
+    const platform = t.region || 'la1';
+    const linked = await getLinkedRiotAccount(userId);
+
+    let captainId = captainRiotId?.trim() || '';
+    if (!captainId && linked) captainId = linked.riotId;
+    if (!captainId) {
+      return res.status(400).json({
+        error: 'Vincula tu cuenta de LoL en tu perfil o ingresa tu Riot ID como capitán',
+        code: 'CAPTAIN_RIOT_REQUIRED',
+      });
+    }
+    if (!/^.+#.{2,}$/.test(captainId)) {
+      return res.status(400).json({ error: 'Riot ID del capitán inválido (formato: Nombre#TAG)' });
+    }
+
+    const captainResolved = await resolveRiotIdToPuuid(captainId, platform);
+    if (!captainResolved) {
+      return res.status(400).json({ error: `No se encontró la cuenta Riot "${captainId}" en ${platform.toUpperCase()}` });
+    }
+
+    const normalizedPlayers: RosterPlayer[] = [];
+    const invitationsSent: string[] = [];
+    const [[captainUser]] = await pool.query<any[]>(
+      'SELECT name, email FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    const inviterName = captainUser?.name || captainUser?.email?.split('@')[0] || 'Capitán';
+
+    for (let i = 0; i < players.length; i++) {
+      const raw = players[i] || {};
+      const name = String(raw.name || '').trim() || `Jugador ${i + 1}`;
+      const riotId = String(raw.riotId || '').trim();
+      const inviteEmail = String(raw.inviteEmail || '').trim();
+
+      if (inviteEmail) {
+        const invitedUserId = await findUserByEmail(inviteEmail);
+        if (!invitedUserId) {
+          return res.status(400).json({
+            error: `No hay cuenta ATAK.GG con el correo ${inviteEmail}. El jugador debe registrarse primero.`,
+            slot: i,
+          });
+        }
+        if (invitedUserId === userId) {
+          // Self-slot: use linked account
+          if (!linked) return res.status(400).json({ error: 'Vincula tu cuenta de LoL para ocupar este slot' });
+          normalizedPlayers.push({
+            name, riotId: linked.riotId, puuid: linked.puuid, userId, inviteStatus: 'accepted',
+          });
+          continue;
+        }
+        normalizedPlayers.push({ name, inviteEmail, inviteStatus: 'pending' });
+        await createInvitation(t.id, teamName, invitedUserId, userId, i, name, {
+          tournamentName: t.name,
+          inviterName,
+        });
+        invitationsSent.push(inviteEmail);
+        continue;
+      }
+
+      if (!riotId) {
+        return res.status(400).json({ error: `Slot ${i + 1}: ingresa Riot ID o invita por correo`, slot: i });
+      }
+      if (!/^.+#.{2,}$/.test(riotId)) {
+        return res.status(400).json({ error: `Riot ID inválido en slot ${i + 1}: ${riotId}` });
+      }
+
+      const resolved = await resolveRiotIdToPuuid(riotId, platform);
+      if (!resolved) {
+        return res.status(400).json({ error: `Cuenta no encontrada: ${riotId}`, slot: i });
+      }
+
+      const matchedUserId = await findUserByRiotId(riotId);
+      normalizedPlayers.push({
+        name,
+        riotId: `${resolved.gameName}#${resolved.tagLine}`,
+        puuid: resolved.puuid,
+        userId: matchedUserId || undefined,
+        inviteStatus: 'accepted',
+      });
+
+      // Notify ATAK users when their Riot ID was added manually
+      if (matchedUserId && matchedUserId !== userId) {
+        await createInvitation(t.id, teamName, matchedUserId, userId, i, name).catch(() => {});
+        await pool.query(
+          "UPDATE tournament_invitations SET status='accepted', responded_at=? WHERE tournament_id=? AND team_name=? AND invited_user_id=?",
+          [new Date().toISOString(), t.id, teamName, matchedUserId]
+        );
+      }
+    }
 
     await pool.query(
-      `INSERT INTO tournament_registrations (tournament_id,team_name,captain_riot_id,players,contact)
-       VALUES (?,?,?,?,?)`,
-      [t.id, teamName, captainRiotId, JSON.stringify(players), contact||'']
+      `INSERT INTO tournament_registrations
+         (tournament_id, team_name, captain_riot_id, players, contact, registered_by, captain_user_id)
+       VALUES (?,?,?,?,?,?,?)`,
+      [
+        t.id, teamName,
+        `${captainResolved.gameName}#${captainResolved.tagLine}`,
+        JSON.stringify(normalizedPlayers),
+        contact || '',
+        userId,
+        userId,
+      ]
     );
     await pool.query('UPDATE tournaments SET participants=participants+1 WHERE id=?', [t.id]);
-    res.json({ success:true, message:'¡Equipo inscrito!', teamName, currentParticipants:t.participants+1 });
+
+    res.json({
+      success: true,
+      message: invitationsSent.length
+        ? `¡Equipo inscrito! Invitaciones enviadas a ${invitationsSent.length} jugador(es).`
+        : '¡Equipo inscrito!',
+      teamName,
+      currentParticipants: t.participants + 1,
+      invitationsSent: invitationsSent.length,
+      captainRiotId: `${captainResolved.gameName}#${captainResolved.tagLine}`,
+    });
   } catch (err: any) {
-    if (err.code==='ER_DUP_ENTRY') return res.status(400).json({ error:'Ya existe un equipo con ese nombre' });
+    if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Ya existe un equipo con ese nombre' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -788,11 +1281,12 @@ router.post('/:id/start', requireAuth, async (req: any, res) => {
 });
 
 // GET bracket
-router.get('/:id/bracket', async (req, res) => {
+router.get('/:id/bracket', optionalAuth, async (req: any, res) => {
   try {
     const t = await getT(req.params.id);
     if (!t) return res.status(404).json({ error:'Torneo no encontrado' });
-    res.json({ bracket:t.bracket||[], phase:t.phase });
+    const access = await getViewerAccess(t, req.auth);
+    res.json({ bracket: sanitizeBracket(t.bracket || [], access), phase: t.phase, viewerAccess: access });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
@@ -967,7 +1461,7 @@ router.post('/:id/matches/:matchId/set-code', requireAuth, async (req: any, res)
     if (!t.bracket) return res.status(400).json({ error: 'Sin bracket' });
     const mi = t.bracket.findIndex(m => m.id === matchId);
     if (mi === -1) return res.status(404).json({ error: 'Partido no encontrado', available: t.bracket.map(m => m.id) });
-    if (code) t.bracket[mi].code = code;
+    if (code) { t.bracket[mi].code = code; t.bracket[mi].codeActivatedAt = Date.now(); }
     if (gameId) {
       t.bracket[mi].gameId     = Number(gameId);
       t.bracket[mi].gameRegion = region ? riotRegionToPlatform(region) : (t.region || 'la1');
@@ -990,6 +1484,35 @@ router.get('/debug-lobby/:code', requireAuth, async (req: any, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+// Admin: clear a wrong gameId link (e.g. a bad roster-recovery) so the match can
+// re-detect from the tournament code or be linked manually. Optionally clears the code.
+router.post('/:id/matches/:matchId/reset-link', requireAuth, async (req: any, res) => {
+  const { id, matchId } = req.params;
+  try {
+    const t = await getT(id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (!isOwner(req, t)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
+    if (!t.bracket) return res.status(400).json({ error: 'Sin bracket' });
+    const mi = t.bracket.findIndex(m => m.id === matchId);
+    if (mi === -1) return res.status(404).json({ error: 'Partido no encontrado' });
+
+    const clearCode = req.body?.clearCode === true;
+    t.bracket[mi].gameId = undefined;
+    t.bracket[mi].gameRegion = undefined;
+    if (clearCode) { t.bracket[mi].code = null; t.bracket[mi].codeActivatedAt = undefined; }
+    await saveT(t);
+
+    // Drop cached stats + live-cache so the next request re-fetches cleanly.
+    await pool.query(
+      'DELETE FROM tournament_match_stats WHERE tournament_id = ? AND bracket_match_id = ?',
+      [id, matchId]
+    ).catch(() => {});
+    for (const [k] of liveCache) { if (k.includes('live') || k.includes('codegame')) liveCache.delete(k); }
+
+    res.json({ success: true, matchId, cleared: { gameId: true, code: clearCode } });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 // Match stats — full MatchDto parsing with DB cache
 router.get('/:id/matches/:matchId/stats', async (req, res) => {
   const { id, matchId } = req.params;
@@ -1007,6 +1530,17 @@ router.get('/:id/matches/:matchId/stats', async (req, res) => {
         console.log(`[stats] gameId auto-detectado vía código: ${t.bracket[mi].code} → ${detected.gameId} (${detected.platform})`);
         t.bracket[mi].gameId     = detected.gameId;
         t.bracket[mi].gameRegion = detected.platform;
+        await saveT(t).catch(e => console.error('[stats] saveT error:', e.message));
+      }
+    }
+
+    // Recuperar desde historial de jugadores inscritos si Riot no vinculó el código
+    if (!t.bracket[mi].gameId) {
+      const recovered = await recoverGameFromRoster(t, t.bracket[mi]);
+      if (recovered) {
+        console.log(`[stats] gameId recuperado vía roster: ${matchId} → ${recovered.gameId} (${recovered.platform})`);
+        t.bracket[mi].gameId     = recovered.gameId;
+        t.bracket[mi].gameRegion = recovered.platform;
         await saveT(t).catch(e => console.error('[stats] saveT error:', e.message));
       }
     }
@@ -1089,39 +1623,30 @@ router.post('/:id/matches/:matchId/detect-from-code', requireAuth, async (req: a
   }
 });
 
-// Sincronizar gameIds en todos los partidos con código pero sin gameId
+// Sincronizar gameIds + stats + resultados automáticos (owner o admin)
 router.post('/:id/sync-games', requireAuth, async (req: any, res) => {
   const { id } = req.params;
   try {
     const t = await getT(id);
     if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
-    if (!isOwner(req, t)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
-    if (!t.bracket) return res.json({ synced: 0, details: [] });
+    if (!isOwner(req, t) && !isAdmin(req)) return res.status(403).json({ error: 'Solo el creador puede hacer esto' });
+    const result = await syncTournamentFull(id);
+    res.json({ success: true, ...result, total: result.details.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    const details: { matchId: string; code: string; gameId?: number; platform?: string; error?: string }[] = [];
-
-    for (let i = 0; i < t.bracket.length; i++) {
-      const m = t.bracket[i];
-      if (!m.code || m.gameId) continue;
-
-      try {
-        const detected = await tryDetectGameId(m.code, t.region || 'la1');
-        if (detected) {
-          t.bracket[i].gameId     = detected.gameId;
-          t.bracket[i].gameRegion = detected.platform;
-          details.push({ matchId: m.id, code: m.code, gameId: detected.gameId, platform: detected.platform });
-        } else {
-          details.push({ matchId: m.id, code: m.code, error: 'Sin partida registrada aún' });
-        }
-      } catch (e: any) {
-        details.push({ matchId: m.id, code: m.code, error: e.message });
-      }
+// POST /:id/auto-sync — público para torneos activos (rate-limited por caché); fuerza sync ligero
+router.post('/:id/auto-sync', async (req, res) => {
+  try {
+    const t = await getT(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    if (t.phase !== 'active' && t.phase !== 'complete') {
+      return res.json({ synced: 0, details: [], message: 'Torneo no activo' });
     }
-
-    const synced = details.filter(d => d.gameId).length;
-    if (synced > 0) await saveT(t);
-
-    res.json({ synced, total: details.length, details });
+    const result = await syncTournamentFull(t.id);
+    res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1265,14 +1790,24 @@ router.get('/:id/codes', requireAuth, async (req: any, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-router.get('/:id/lobby-events/:code', async (req, res) => {
-  try { res.json(await getLobbyEvents(req.params.code)); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
+router.get('/:id/lobby-events/:code', requireAuth, async (req: any, res) => {
+  try {
+    const t = await getT(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    const access = await getViewerAccess(t, req.auth);
+    if (access === 'public') return res.status(403).json({ error: 'Solo jugadores inscritos' });
+    res.json(await getLobbyEvents(req.params.code));
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-router.get('/:id/code-info/:code', async (req, res) => {
-  try { res.json(await getCodeInfo(req.params.code)); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
+router.get('/:id/code-info/:code', requireAuth, async (req: any, res) => {
+  try {
+    const t = await getT(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
+    const access = await getViewerAccess(t, req.auth);
+    if (access === 'public') return res.status(403).json({ error: 'Solo jugadores inscritos' });
+    res.json(await getCodeInfo(req.params.code));
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── PATCH /:id — update logo/banner/region (owner only) ─────────────────────
@@ -1361,13 +1896,57 @@ async function buildLiveData(id: string) {
       ids.forEach(rid => { if (rid && !allRiotIds.includes(rid)) allRiotIds.push(rid); });
     }
 
-    console.log(`[live:${id}] match ${match.id} → probing ${allRiotIds.length} Riot IDs:`, allRiotIds);
+    // ── Per-team PUUID sets — used to verify a spectator game is THIS match ──────
+    const team1Puuids = new Set<string>(match.team1Puuids ?? []);
+    const team2Puuids = new Set<string>(match.team2Puuids ?? []);
+    for (const rid of (match.team1 ? teamPlayersMap.get(match.team1) ?? [] : [])) {
+      const p = await resolvePuuid(rid); if (p) team1Puuids.add(p);
+    }
+    for (const rid of (match.team2 ? teamPlayersMap.get(match.team2) ?? [] : [])) {
+      const p = await resolvePuuid(rid); if (p) team2Puuids.add(p);
+    }
+
+    // ── Authoritative game id from the tournament CODE (source of truth) ────────
+    // Prefer a callback-linked gameId; otherwise ask Riot which game the code produced.
+    let codeGameId: number | null = match.gameId ?? null;
+    if (match.code) {
+      const ck = `codegame:${match.code}`;
+      const cached = lcGet(ck);
+      if (cached !== undefined) {
+        codeGameId = (cached as number | null) ?? codeGameId;
+      } else {
+        try {
+          const games = await getGamesByCode(match.code);
+          const g = games.length ? Number(games[games.length - 1].gameId) : null;
+          if (g) codeGameId = g;
+          lcSet(ck, g, 30_000);
+        } catch { /* keep existing */ }
+      }
+    }
+
+    // A spectator game counts as the tournament match ONLY if:
+    //   a) its gameId equals the code's game (or callback-linked gameId), OR
+    //   b) it's a CUSTOM game (queueId 0 — what tournament codes create) that has
+    //      at least one registered player from EACH team (scrim/arena-proof).
+    // Anything else (Arena/CHERRY, ARAM, ranked, normals) is rejected.
+    const isTournamentGame = (game: any): boolean => {
+      if (!game) return false;
+      if (codeGameId && Number(game.gameId) === Number(codeGameId)) return true;
+      const q = game.gameQueueConfigId ?? game.gameQueueId;
+      if (q !== 0) return false;
+      const gp = (game.participants ?? []).map((p: any) => p.puuid).filter(Boolean) as string[];
+      const inT1 = gp.some((p) => team1Puuids.has(p));
+      const inT2 = gp.some((p) => team2Puuids.has(p));
+      return inT1 && inT2;
+    };
+
+    console.log(`[live:${id}] match ${match.id} → probing ${allRiotIds.length} Riot IDs (codeGameId=${codeGameId ?? '—'}):`, allRiotIds);
 
     let liveGame: any = null;
     for (const riotId of allRiotIds) {
       const ck = `live:${platform}:${riotId}`;
       const cached = lcGet(ck);
-      if (cached) { console.log(`  [cache HIT game] ${riotId}`); liveGame = cached; break; }
+      if (cached && isTournamentGame(cached)) { console.log(`  [cache HIT game] ${riotId}`); liveGame = cached; break; }
 
       const puuid = await resolvePuuid(riotId);
       if (!puuid) { console.log(`  [puuid FAIL] ${riotId}`); continue; }
@@ -1380,18 +1959,14 @@ async function buildLiveData(id: string) {
         for (const pf of probePlatforms) {
           // 1. Try spectator by-puuid
           game = await getLiveGameByPuuid(pf, puuid);
-          if (game) { console.log(`  [LIVE by-puuid] ${riotId} on ${pf} gameId=${game.gameId}`); break; }
+          if (game) { console.log(`  [by-puuid] ${riotId} on ${pf} gameId=${game.gameId} q=${game.gameQueueConfigId}`); break; }
 
           // 2. Try spectator by-summoner
           try {
             const summoner = await getSummonerByPUUID(pf, puuid);
             if (summoner?.id) {
-              console.log(`  [by-summoner] ${riotId} on ${pf} summonerId=${summoner.id.slice(0,10)}...`);
               game = await getLiveGame(pf, summoner.id);
-              if (game) { console.log(`  [LIVE by-summoner] ${riotId} on ${pf} gameId=${game.gameId}`); break; }
-              console.log(`  [by-summoner] ${riotId} on ${pf} → not in game`);
-            } else {
-              console.log(`  [by-summoner] ${riotId} on ${pf} → no summoner found`);
+              if (game) { console.log(`  [by-summoner] ${riotId} on ${pf} gameId=${game.gameId} q=${game.gameQueueConfigId}`); break; }
             }
           } catch (e: any) {
             console.log(`  [by-summoner ERROR] ${riotId} on ${pf}:`, e?.response?.status ?? e?.message);
@@ -1399,10 +1974,14 @@ async function buildLiveData(id: string) {
         }
 
         if (game) {
-          console.log(`  [LIVE FOUND] ${riotId} gameId=${game.gameId}`);
           lcSet(ck, game, 60_000);
-          liveGame = game;
-          break;
+          if (isTournamentGame(game)) {
+            console.log(`  [LIVE — tournament game] ${riotId} gameId=${game.gameId}`);
+            liveGame = game;
+            break;
+          } else {
+            console.log(`  [skip — not the tournament game] ${riotId} gameId=${game.gameId} q=${game.gameQueueConfigId}`);
+          }
         } else {
           console.log(`  [not in game] ${riotId}`);
           lcSet(ck, null, 15_000);
@@ -1414,7 +1993,8 @@ async function buildLiveData(id: string) {
 
     // ── Fallback: lobby events ─────────────────────────────────────────────────
     // If no player had a valid Riot ID (bad registration data), try fetching the
-    // summoner IDs directly from the tournament code's lobby events.
+    // summoner IDs directly from the tournament code's lobby events. Still gated by
+    // isTournamentGame so we never surface an unrelated game as live.
     if (!liveGame && match.code) {
       console.log(`  [lobby fallback] trying code ${match.code}`);
       try {
@@ -1430,14 +2010,16 @@ async function buildLiveData(id: string) {
         for (const sid of summonerIds) {
           const ck = `live-sid:${platform}:${sid}`;
           const cached = lcGet(ck);
-          if (cached) { liveGame = cached; break; }
+          if (cached && isTournamentGame(cached)) { liveGame = cached; break; }
           try {
             const game = await getLiveGame(platform, sid);
             if (game) {
-              console.log(`  [LIVE via lobby] summonerId=${sid.slice(0,10)}... gameId=${game.gameId}`);
               lcSet(ck, game, 60_000);
-              liveGame = game;
-              break;
+              if (isTournamentGame(game)) {
+                console.log(`  [LIVE via lobby] summonerId=${sid.slice(0,10)}... gameId=${game.gameId}`);
+                liveGame = game;
+                break;
+              }
             } else {
               lcSet(ck, null, 15_000);
             }
@@ -1531,17 +2113,32 @@ router.get('/:id/debug-live', requireAuth, async (req: any, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+function sanitizeLivePayload(data: any, access: ViewerAccess) {
+  if (!data) return data;
+  const canViewCodes = access === 'owner' || access === 'participant';
+  return {
+    ...data,
+    viewerAccess: access,
+    matches: (data.matches || []).map((m: any) => (
+      canViewCodes ? m : { ...m, code: null }
+    )),
+  };
+}
+
 // GET /:id/live-matches — REST endpoint (polling)
-router.get('/:id/live-matches', async (req, res) => {
+router.get('/:id/live-matches', optionalAuth, async (req: any, res) => {
   try {
+    const t = await getT(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Torneo no encontrado' });
     const data = await buildLiveData(req.params.id);
     if (!data) return res.status(404).json({ error: 'Torneo no encontrado' });
-    res.json(data);
+    const access = await getViewerAccess(t, req.auth);
+    res.json(sanitizeLivePayload(data, access));
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // GET /:id/live-stream — SSE endpoint (real-time, every 15s)
-router.get('/:id/live-stream', async (req, res) => {
+router.get('/:id/live-stream', optionalAuth, async (req: any, res) => {
   res.setHeader('Content-Type',     'text/event-stream');
   res.setHeader('Cache-Control',    'no-cache');
   res.setHeader('Connection',       'keep-alive');
@@ -1555,11 +2152,14 @@ router.get('/:id/live-stream', async (req, res) => {
     } catch {}
   };
 
+  const tournId = req.params.id;
   const tick = async () => {
     try {
-      const data = await buildLiveData(req.params.id);
-      if (data) push(data);
-      else push({ error: 'Torneo no encontrado' });
+      const t = await getT(tournId);
+      const data = await buildLiveData(tournId);
+      if (!data) { push({ error: 'Torneo no encontrado' }); return; }
+      const access = t ? await getViewerAccess(t, req.auth) : 'public';
+      push(sanitizeLivePayload(data, access));
     } catch (e: any) { push({ error: e.message }); }
   };
 

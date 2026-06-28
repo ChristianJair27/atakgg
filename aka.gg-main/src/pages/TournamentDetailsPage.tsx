@@ -17,9 +17,11 @@ import {
   useGenerateCodes,
   useActivateMatch,
   useReportResult,
+  useSyncGames,
   type Registration as RegistrationType,
   type Tournament as TournamentType,
 } from '@/hooks/queries/tournaments';
+import { useAuth } from '@/features/auth/useAuth';
 import { TournamentBracket } from '@/components/TournamentBracket';
 import { MatchStatsDetail } from '@/components/MatchStatsDetail';
 import { TournamentGlobalStats } from '@/components/TournamentGlobalStats';
@@ -186,6 +188,7 @@ function AdminPanel({ tournament, registrations }: {
   const closeReg = useCloseRegistration(tournament.id);
   const start    = useStartTournament(tournament.id);
   const codes    = useGenerateCodes(tournament.id);
+  const sync     = useSyncGames(tournament.id);
   const checkedIn = registrations.filter(r=>r.checkedIn).length;
 
   return (
@@ -244,6 +247,15 @@ function AdminPanel({ tournament, registrations }: {
             Generar códigos ({tournament.codesAvailable})
           </button>
         )}
+        {(tournament.phase === 'active' || tournament.phase === 'complete') && (
+          <button disabled={sync.isPending}
+            onClick={() => sync.mutate()}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-600
+              text-white text-sm font-semibold transition-all disabled:opacity-40">
+            {sync.isPending ? <RefreshCw className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4"/>}
+            Sincronizar stats
+          </button>
+        )}
       </div>
       {tournament.phase==='checkin' && tournament.checkinDeadline && (
         <p className="text-xs text-yellow-400 mt-3 flex items-center gap-1">
@@ -268,7 +280,7 @@ function MatchStatsPicker({
   tournament, registrations,
 }: { tournament: Tournament; registrations: Registration[] }) {
   const matches = (tournament.bracket ?? []).filter(
-    m => m.matchStatus === 'active' || m.matchStatus === 'complete'
+    m => m.matchStatus === 'active' || m.matchStatus === 'complete' || !!m.code
   );
   const [selectedId, setSelectedId] = useState<string | null>(
     matches.find(m => m.gameId)?.id ?? matches[0]?.id ?? null
@@ -280,10 +292,11 @@ function MatchStatsPicker({
   const getTeamName = (team: string | null) =>
     registrations.find(r => r.teamName === team)?.teamName ?? team;
 
-  const { stats, loading, error } = useMatchStats({
+  const { stats, loading, error, waitingForGame } = useMatchStats({
     tournamentId: tournament.id,
     bracketMatchId: selected?.id ?? '',
     gameId: selected?.gameId,
+    tournamentCode: selected?.code,
     enabled: !!selected?.id,
     onComplete: (s) => {
       const winner = s.winner === 'blue'
@@ -334,16 +347,29 @@ function MatchStatsPicker({
         </div>
       )}
 
-      {selected && (
+      {selected && !selected.gameId && !selected.code && (
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] py-12 text-center">
+          <Activity className="h-10 w-10 mx-auto mb-3 text-white/10" />
+          <p className="text-white/30 text-sm">Este partido aún no tiene código asignado</p>
+        </div>
+      )}
+
+      {selected && (selected.gameId || selected.code) && (
         <MatchStatsDetail
           stats={stats}
           loading={loading}
-          error={error}
+          error={waitingForGame ? null : error}
           bracketMatchId={selected.id}
           gameId={selected.gameId}
           team1={getTeamName(selected.team1)}
           team2={getTeamName(selected.team2)}
         />
+      )}
+
+      {waitingForGame && selected?.code && (
+        <p className="text-center text-white/30 text-xs mt-4 animate-pulse">
+          Esperando que Riot registre la partida del código {selected.code}…
+        </p>
       )}
     </div>
   );
@@ -355,6 +381,14 @@ function StatsTabView({
 }: { tournament: Tournament; registrations: Registration[] }) {
   const [subTab, setSubTab] = useState<'resumen' | 'partidas'>('resumen');
   const [toast, setToast]   = useState<string | null>(null);
+
+  // Trigger backend auto-sync when viewing stats on active tournaments
+  useEffect(() => {
+    if (tournament.phase !== 'active' && tournament.phase !== 'complete') return;
+    import('@/lib/axios').then(({ axiosInstance }) => {
+      axiosInstance.post(`/api/tournaments/${tournament.id}/auto-sync`).catch(() => {});
+    });
+  }, [tournament.id, tournament.phase]);
 
   const { data: globalStats, loading: globalLoading, refresh: globalRefresh } = useTournamentGlobalStats({
     tournamentId: tournament.id,
@@ -424,12 +458,13 @@ function StatsTabView({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TournamentDetailsPage() {
   const { id } = useParams<{ id:string }>();
+  const { user } = useAuth();
   const [tab, setTab]               = useState('');
   const [tabInit, setTabInit]       = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
 
   // Cached reads (React Query): tournament + its registrations.
-  const tournamentQ   = useTournament(id);
+  const tournamentQ   = useTournament(id, { pollWhenActive: true });
   const registrationsQ = useRegistrations(id);
   const tournament = tournamentQ.data ?? null;
   const registrations: Registration[] = registrationsQ.data ?? [];
@@ -483,6 +518,11 @@ export default function TournamentDetailsPage() {
   const maxRound  = tournament.bracket?.length ? Math.max(...tournament.bracket.map(m=>m.round)) : 0;
   const checkedIn = registrations.filter(r=>r.checkedIn).length;
   const pct       = Math.min(100, Math.round((tournament.participants/tournament.maxParticipants)*100));
+  const userId    = user?.id != null ? Number(user.id) : null;
+  const canManage = userId != null && (
+    user?.role === 'admin' || (tournament.createdBy != null && userId === tournament.createdBy)
+  );
+  const canViewCodes = tournament.viewerAccess === 'owner' || tournament.viewerAccess === 'participant';
 
   return (
     <div className="min-h-screen text-white">
@@ -573,8 +613,8 @@ export default function TournamentDetailsPage() {
           <CheckinPanel tournamentId={tournament.id} />
         )}
 
-        {/* Admin panel */}
-        {(tournament.phase==='registration'||tournament.phase==='checkin'||tournament.phase==='active') && (
+        {/* Admin panel — solo creador o admin */}
+        {canManage && (tournament.phase==='registration'||tournament.phase==='checkin'||tournament.phase==='active') && (
           <AdminPanel tournament={tournament} registrations={registrations} />
         )}
 
@@ -602,6 +642,8 @@ export default function TournamentDetailsPage() {
                 <TournamentBracket
                   bracket={tournament.bracket as React.ComponentProps<typeof TournamentBracket>['bracket']} maxRound={maxRound}
                   tournamentId={tournament.id}
+                  canViewCodes={canViewCodes}
+                  canManage={canManage}
                   onActivateMatch={handleActivate}
                   onReportResult={handleResult}
                   reportingMatch={reportingMatch}
@@ -692,7 +734,13 @@ export default function TournamentDetailsPage() {
                             )}
                           </div>
                           <p className="text-sm text-gray-400 font-mono">{reg.captainRiotId}</p>
-                          <p className="text-xs text-gray-600 mt-1">{reg.players.map(p=>p.riotId||p.name).join(' · ')}</p>
+                          <p className="text-xs text-gray-600 mt-1">
+                            {reg.players.map(p =>
+                              p.inviteStatus === 'pending'
+                                ? `${p.name} (invitación pendiente)`
+                                : (p.riotId || p.name)
+                            ).join(' · ')}
+                          </p>
                         </div>
                         {reg.contact && (
                           <span className="text-xs text-gray-600 flex-shrink-0">{reg.contact}</span>
