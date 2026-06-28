@@ -1,8 +1,31 @@
 // src/components/TournamentBracket.tsx — glass redesign with connector lines
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Trophy, Swords, Zap, BarChart2, X } from 'lucide-react';
+import { Copy, Check, Trophy, Swords, Zap, BarChart2, X, Crown, Radio } from 'lucide-react';
 import { TournamentMatchStats } from '@/components/TournamentMatchStats';
+
+// Team identity bubble — gives every team a consistent icon in the bracket.
+// ATAK palette only (red family + warm neutrals), never purple/blue/cyan.
+const TEAM_GRADIENTS = [
+  'from-red-700 to-red-900', 'from-rose-800 to-red-950',
+  'from-zinc-700 to-zinc-900', 'from-stone-700 to-stone-900', 'from-amber-700 to-amber-900',
+];
+function TeamAvatar({ name, size = 22, dimmed = false }: { name?: string | null; size?: number; dimmed?: boolean }) {
+  if (!name || name === 'BYE') {
+    return (
+      <div style={{ width: size, height: size }}
+        className="rounded-lg bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-[10px] text-gray-600 flex-shrink-0">–</div>
+    );
+  }
+  const g = TEAM_GRADIENTS[name.charCodeAt(0) % TEAM_GRADIENTS.length];
+  return (
+    <div style={{ width: size, height: size }}
+      className={`rounded-lg bg-gradient-to-br ${g} border border-white/15 flex items-center justify-center text-[11px] font-black text-white flex-shrink-0 ${dimmed ? 'opacity-50 grayscale' : ''}`}>
+      {name[0]?.toUpperCase()}
+    </div>
+  );
+}
 
 type MatchStatus = 'pending' | 'ready' | 'active' | 'complete';
 
@@ -37,7 +60,7 @@ function CopyCode({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); };
   return (
-    <button onClick={copy} className="flex items-center gap-1.5 text-xs text-purple-300 hover:text-purple-200 transition w-full" title="Copiar código">
+    <button onClick={copy} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-300 transition w-full" title="Copiar código">
       {copied ? <Check className="h-3 w-3 text-green-400 flex-shrink-0" /> : <Copy className="h-3 w-3 flex-shrink-0" />}
       <span className="font-mono truncate">{code}</span>
     </button>
@@ -100,30 +123,46 @@ function MatchCard({ match, isActive, isReporting, onActivate, onReport, onToggl
   const handleActivate = async () => { setActivating(true); await onActivate(); setActivating(false); };
 
   const teamCls = (team: string | null) =>
-    `px-2.5 py-1.5 text-sm rounded-lg flex items-center justify-between gap-1 transition ${
+    `px-2 py-1.5 text-sm rounded-lg flex items-center gap-2 transition ${
       team === match.winner   ? 'bg-green-500/15 text-green-300 font-bold border border-green-500/30' :
       !team || team === 'BYE' ? 'bg-white/[0.02] text-gray-600 italic border border-transparent' :
-      match.winner            ? 'bg-white/[0.02] text-gray-500 line-through border border-transparent' :
+      match.winner            ? 'bg-white/[0.02] text-gray-500 border border-transparent' :
                                 'bg-white/[0.05] text-gray-100 border border-white/[0.06]'
     }`;
 
   const isEmpty = !match.team1 && !match.team2;
   const canShowStats = !!match.gameId || match.matchStatus === 'complete';
 
+  const TeamRow = ({ team, score }: { team: string | null; score?: number }) => {
+    const isWin = !!team && team === match.winner;
+    const isLoss = !!match.winner && !isWin && !!team && team !== 'BYE';
+    return (
+      <div className={teamCls(team)}>
+        <TeamAvatar name={team} dimmed={isLoss} />
+        <span className={`truncate flex-1 ${isLoss ? 'line-through' : ''}`}>{team || 'Por definir'}</span>
+        <span className="flex items-center gap-1 flex-shrink-0">
+          {score !== undefined && match.winner && <span className="text-xs opacity-60 tabular-nums">{score}</span>}
+          {isWin && <Crown className="h-3.5 w-3.5 text-yellow-400" />}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <div className={`rounded-xl overflow-hidden backdrop-blur-md transition ${
       match.matchStatus === 'complete' ? 'border border-green-500/25 bg-green-500/[0.04]' :
-      match.matchStatus === 'active'   ? 'border border-purple-500/40 bg-purple-500/[0.06] shadow-[0_0_18px_rgba(168,85,247,0.12)]' :
+      match.matchStatus === 'active'   ? 'border border-red-500/40 bg-red-500/[0.06] shadow-[0_0_18px_rgba(225,36,46,0.14)]' :
       match.matchStatus === 'ready'    ? 'border border-white/[0.10] bg-white/[0.03]' :
                                          'border border-white/[0.05] bg-white/[0.01] opacity-50'
     }`} style={{ width: CARD_W }}>
       {!isEmpty && (
-        <div className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-center ${
+        <div className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-center flex items-center justify-center gap-1.5 ${
           match.matchStatus === 'complete' ? 'bg-green-500/10 text-green-400' :
-          match.matchStatus === 'active'   ? 'bg-purple-500/15 text-purple-300' :
+          match.matchStatus === 'active'   ? 'bg-red-500/15 text-red-300' :
           match.matchStatus === 'ready'    ? 'bg-white/[0.04] text-gray-400' :
                                              'bg-white/[0.02] text-gray-600'
         }`}>
+          {match.matchStatus === 'active' && <Radio className="h-2.5 w-2.5 animate-pulse" />}
           {match.matchStatus === 'complete' ? 'Completado' :
            match.matchStatus === 'active'   ? 'En curso' :
            match.matchStatus === 'ready'    ? 'Por iniciar' : 'Esperando'}
@@ -131,21 +170,12 @@ function MatchCard({ match, isActive, isReporting, onActivate, onReport, onToggl
       )}
 
       <div className="p-2 space-y-1">
-        <div className={teamCls(match.team1)}>
-          <span className="truncate">{match.team1 || 'Por definir'}</span>
-          <span className="flex items-center gap-1 flex-shrink-0">
-            {match.score1 !== undefined && match.winner && <span className="text-xs opacity-60">{match.score1}</span>}
-            {match.winner === match.team1 && <Trophy className="h-3 w-3 text-yellow-400" />}
-          </span>
+        <TeamRow team={match.team1} score={match.score1} />
+        <div className="flex items-center justify-center -my-0.5">
+          <span className="text-[9px] font-black text-gray-700 tracking-widest">VS</span>
+          <Swords className="h-3 w-3 text-gray-700 ml-1" />
         </div>
-        <div className="flex items-center justify-center"><Swords className="h-3 w-3 text-gray-700" /></div>
-        <div className={teamCls(match.team2)}>
-          <span className="truncate">{match.team2 || 'Por definir'}</span>
-          <span className="flex items-center gap-1 flex-shrink-0">
-            {match.score2 !== undefined && match.winner && <span className="text-xs opacity-60">{match.score2}</span>}
-            {match.winner === match.team2 && <Trophy className="h-3 w-3 text-yellow-400" />}
-          </span>
-        </div>
+        <TeamRow team={match.team2} score={match.score2} />
       </div>
 
       {canViewCodes && match.code && (
@@ -163,7 +193,7 @@ function MatchCard({ match, isActive, isReporting, onActivate, onReport, onToggl
         <div className="px-2 pb-2 space-y-1">
           {match.matchStatus === 'ready' && !match.code && (
             <Button size="sm" onClick={handleActivate} disabled={activating}
-              className="w-full h-7 text-xs bg-purple-600 hover:bg-purple-500 border-0">
+              className="w-full h-7 text-xs bg-red-600 hover:bg-red-500 border-0">
               {activating ? '...' : <><Zap className="h-3 w-3 mr-1" />Obtener código</>}
             </Button>
           )}
@@ -185,7 +215,7 @@ function MatchCard({ match, isActive, isReporting, onActivate, onReport, onToggl
       {canShowStats && (
         <button onClick={onToggleStats}
           className={`w-full flex items-center justify-center gap-1.5 text-xs py-1.5 border-t border-white/[0.06] transition ${
-            statsOpen ? 'text-purple-200 bg-purple-500/10' : 'text-purple-300/80 hover:text-purple-200 hover:bg-purple-500/[0.06]'
+            statsOpen ? 'text-red-200 bg-red-500/10' : 'text-red-300/80 hover:text-red-200 hover:bg-red-500/[0.06]'
           }`}>
           <BarChart2 className="h-3 w-3" />
           {statsOpen ? 'Ocultar stats' : 'Ver stats'}
@@ -255,7 +285,9 @@ export function TournamentBracket({
               return (
                 <div key={round} className="flex flex-col justify-around" style={{ width: COL_W }}>
                   {matchesInRound.map((match, mi) => (
-                    <div key={match.id} className="relative flex items-center justify-center" style={{ width: COL_W }}>
+                    <motion.div key={match.id} className="relative flex items-center justify-center" style={{ width: COL_W }}
+                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: (round - 1) * 0.08 + mi * 0.04, ease: [0.22, 1, 0.36, 1] }}>
                       <MatchCard
                         match={match} isActive={isActive}
                         isReporting={reportingMatch === match.id}
@@ -267,7 +299,7 @@ export function TournamentBracket({
                         canManage={canManage}
                       />
                       {round < maxRound && <Connector matchIndex={mi} vSpan={vSpan} />}
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               );
@@ -276,11 +308,14 @@ export function TournamentBracket({
             {/* Champion */}
             {champion && (
               <div className="flex flex-col justify-center" style={{ width: 168 }}>
-                <div className="p-4 rounded-2xl text-center border border-yellow-500/40 bg-gradient-to-b from-yellow-500/15 to-yellow-900/10 shadow-[0_0_24px_rgba(234,179,8,0.15)]">
-                  <Trophy className="h-9 w-9 text-yellow-400 mx-auto mb-2" />
+                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.4, delay: maxRound * 0.1, ease: [0.22, 1, 0.36, 1] }}
+                  className="p-4 rounded-2xl text-center border border-yellow-500/40 bg-gradient-to-b from-yellow-500/15 to-yellow-900/10 shadow-[0_0_24px_rgba(234,179,8,0.15)]">
+                  <Crown className="h-9 w-9 text-yellow-400 mx-auto mb-2" />
+                  <div className="flex justify-center mb-2"><TeamAvatar name={champion} size={40} /></div>
                   <p className="text-[10px] text-yellow-400/70 uppercase tracking-wider">Campeón</p>
                   <p className="text-lg font-bold text-yellow-300 mt-1 break-words">{champion}</p>
-                </div>
+                </motion.div>
               </div>
             )}
           </div>
