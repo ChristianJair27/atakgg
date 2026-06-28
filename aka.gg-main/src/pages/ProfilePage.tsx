@@ -2,10 +2,19 @@
 // Porofessor-style summoner profile — ATAK.GG dark red & black brand.
 // New page; reuses the existing backend (/api/stats/*) via axiosInstance,
 // the useChampions hook, and the DDragon icon helpers in src/lib/dataDragon.ts.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { axiosInstance } from '@/lib/axios';
+import { useQueryClient } from '@tanstack/react-query';
 import { useChampions } from '@/hooks/use-ddragon';
+import {
+  useResolveRiotId,
+  useSummary,
+  useMatches,
+  useLeagueRank,
+  useRecentTeammates,
+  useBestPlayers,
+} from '@/hooks/queries/stats';
+import { qk } from '@/hooks/queries/keys';
 import {
   dd,
   rankEmblem,
@@ -17,6 +26,7 @@ import { KataLoaderOverlay } from '@/components/KataLoader';
 import { motion } from 'framer-motion';
 import ChampionDanceSlot from '@/components/ChampionDanceSlot';
 import { ScrollVideoBg } from '@/components/ScrollVideoBg';
+import { Tip } from '@/components/ui/Tip';
 
 // ─── Brand tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -211,7 +221,7 @@ function SectionTitle({ children, right }: { children: React.ReactNode; right?: 
 function Bar({ value, color }: { value: number; color: string }) {
   return (
     <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden' }}>
-      <div style={{ height: '100%', width: `${Math.min(Math.max(value, 0), 100)}%`, background: color, borderRadius: 999, transition: 'width .6s' }} />
+      <div style={{ height: '100%', width: '100%', background: color, borderRadius: 999, transformOrigin: 'left', transform: `scaleX(${Math.min(Math.max(value, 0), 100) / 100})`, transition: 'transform .6s' }} />
     </div>
   );
 }
@@ -348,123 +358,54 @@ export default function ProfilePage() {
   const continent = platformToContinent(platform);
   const { gameName, tagLine } = useMemo(() => splitNameTag(name, platform), [name, platform]);
 
-  const [puuid, setPuuid] = useState<string>();
-  const [resolveErr, setResolveErr] = useState(false);
-  const [summary, setSummary] = useState<any>(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-  const [matches, setMatches] = useState<any[]>([]);
-  const [matchesLoading, setMatchesLoading] = useState(true);
+  const qc = useQueryClient();
   const [count, setCount] = useState(10);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState<'all' | 420 | 440 | 450>('all');
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [leagueRank, setLeagueRank] = useState<{ regionalRank: number | null; topPercent: number | null } | null>(null);
-  const [teammates, setTeammates] = useState<any[] | null>(null);
-  const [teammatesLoading, setTeammatesLoading] = useState(true);
-  const [bestPlayers, setBestPlayers] = useState<Record<string, any> | null>(null);
 
   const champByKey = champs?.byKey;
 
-  // Resolve PUUID
-  useEffect(() => {
-    if (!gameName || !tagLine) { setResolveErr(true); return; }
-    setResolveErr(false);
-    const ac = new AbortController();
-    axiosInstance
-      .get('/api/stats/resolve', { params: { region: platform, gameName, tagLine }, signal: ac.signal })
-      .then(({ data }) => setPuuid(data.puuid))
-      .catch((e) => { if (!ac.signal.aborted) setResolveErr(true); });
-    return () => ac.abort();
-  }, [gameName, tagLine, platform, refreshKey]);
+  // ── Dependent React Query chain ──────────────────────────────────────────────
+  // resolve (riotId → puuid) → summary / matches / league-rank / teammates /
+  // best-players. Each downstream query is `enabled` only once `puuid` resolves,
+  // so the flow self-orchestrates and everything is cached + deduped.
+  const hasRiotId = Boolean(gameName && tagLine);
+  const resolveQ = useResolveRiotId(hasRiotId ? platform : undefined, gameName, tagLine);
+  const puuid = resolveQ.data?.puuid;
+  const resolveErr = !hasRiotId || resolveQ.isError;
 
-  // Summary (summoner + rank + mastery)
-  useEffect(() => {
-    if (!puuid) return;
-    setSummaryLoading(true);
-    const ac = new AbortController();
-    axiosInstance
-      .get(`/api/stats/summary/${platform}/${puuid}`, { signal: ac.signal })
-      .then(({ data }) => setSummary(data))
-      .catch(() => {})
-      .finally(() => setSummaryLoading(false));
-    return () => ac.abort();
-  }, [puuid, platform, refreshKey]);
+  const summaryQ = useSummary(platform, puuid);
+  const summary = summaryQ.data ?? null;
+  const summaryLoading = summaryQ.isPending; // pending while disabled or in-flight
 
-  // Matches (full detail)
-  const fetchMatches = useCallback(async (n: number) => {
-    if (!puuid) return;
-    try {
-      const { data: ids } = await axiosInstance.get(`/api/stats/matches/${continent}/${puuid}/ids`, { params: { count: n } });
-      const settled = await Promise.allSettled(
-        (ids || []).slice(0, n).map((mid: string) =>
-          axiosInstance.get(`/api/stats/matches/${continent}/${mid}`, { params: { puuid } })
-        )
-      );
-      setMatches(
-        settled
-          .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
-          .map((r) => r.value.data)
-          .sort((a, b) => (b.gameStartTimestamp || 0) - (a.gameStartTimestamp || 0))
-      );
-    } catch { /* graceful */ }
-  }, [puuid, continent]);
+  const matchesQ = useMatches(continent, puuid, count);
+  const matches: any[] = matchesQ.data ?? [];
+  // While "Cargar más" refetches with a new count we still have the prior page.
+  const matchesLoading = matchesQ.isPending;
+  const loadingMore = matchesQ.isFetching && !matchesQ.isPending;
 
-  useEffect(() => {
-    if (!puuid) return;
-    setMatchesLoading(true);
-    fetchMatches(count).finally(() => setMatchesLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [puuid, refreshKey]);
+  const leagueRankQ = useLeagueRank(platform, puuid);
+  const leagueRank = leagueRankQ.data ?? null;
 
-  // League regional rank + top% (apex tiers only; null otherwise — honest)
-  useEffect(() => {
-    if (!puuid) return;
-    const ac = new AbortController();
-    setLeagueRank(null);
-    axiosInstance
-      .get(`/api/stats/league-rank/${platform}/${puuid}`, { signal: ac.signal })
-      .then(({ data }) => setLeagueRank({ regionalRank: data?.regionalRank ?? null, topPercent: data?.topPercent ?? null }))
-      .catch(() => {});
-    return () => ac.abort();
-  }, [puuid, platform, refreshKey]);
+  const teammatesQ = useRecentTeammates(continent, puuid, 20);
+  const teammates = teammatesQ.data ?? null;
+  const teammatesLoading = teammatesQ.isPending;
 
-  // Recently played with
-  useEffect(() => {
-    if (!puuid) return;
-    const ac = new AbortController();
-    setTeammatesLoading(true);
-    setTeammates(null);
-    axiosInstance
-      .get(`/api/stats/recent-teammates/${continent}/${puuid}`, { params: { count: 20 }, signal: ac.signal })
-      .then(({ data }) => setTeammates(data?.players || []))
-      .catch(() => setTeammates([]))
-      .finally(() => setTeammatesLoading(false));
-    return () => ac.abort();
-  }, [puuid, continent, refreshKey]);
+  const bestPlayersQ = useBestPlayers(platform, puuid, 15);
+  const bestPlayers = bestPlayersQ.data ?? null;
 
-  // "Mejor jugador" per champion (best-effort, ours; cached server-side)
-  useEffect(() => {
-    if (!puuid) return;
-    const ac = new AbortController();
-    setBestPlayers(null);
-    axiosInstance
-      .get(`/api/stats/best-players/${platform}/${puuid}`, { params: { count: 15 }, signal: ac.signal })
-      .then(({ data }) => setBestPlayers(data?.byChampion || {}))
-      .catch(() => setBestPlayers({}));
-    return () => ac.abort();
-  }, [puuid, platform, refreshKey]);
+  const loadMore = () => setCount((n) => n + 10);
 
-  const loadMore = async () => {
-    setLoadingMore(true);
-    const n = count + 10;
-    setCount(n);
-    await fetchMatches(n);
-    setLoadingMore(false);
-  };
-
+  // "Actualizar" — invalidate every stats query for this invocador (resolve
+  // through the dependent chain). React Query then refetches the mounted ones.
   const refresh = () => {
-    setPuuid((p) => p); // keep
-    setRefreshKey((k) => k + 1);
+    qc.invalidateQueries({ queryKey: qk.stats.resolve(platform, gameName, tagLine) });
+    if (puuid) {
+      qc.invalidateQueries({ queryKey: qk.stats.summary(platform, puuid) });
+      qc.invalidateQueries({ queryKey: qk.stats.matches(continent, puuid, count) });
+      qc.invalidateQueries({ queryKey: qk.stats.leagueRank(platform, puuid) });
+      qc.invalidateQueries({ queryKey: qk.stats.recentTeammates(continent, puuid) });
+      qc.invalidateQueries({ queryKey: qk.stats.bestPlayers(platform, puuid) });
+    }
   };
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -678,14 +619,16 @@ export default function ProfilePage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.7)' }}>
                   Temporada 2026 <ChevronDown size={15} />
                 </div>
-                <button
-                  onClick={refresh}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = C.redHover)}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = C.red)}
-                >
-                  <RefreshCw size={15} /> Actualizar
-                </button>
+                <Tip label="Volver a cargar los datos del invocador">
+                  <button
+                    onClick={refresh}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = C.redHover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = C.red)}
+                  >
+                    <RefreshCw size={15} /> Actualizar
+                  </button>
+                </Tip>
               </div>
             </div>
           </Panel>
@@ -705,7 +648,7 @@ export default function ProfilePage() {
                 recap={recap} filter={filter} setFilter={setFilter}
                 champByKey={champByKey} puuid={puuid}
                 onLoadMore={loadMore} loadingMore={loadingMore}
-                hasMore={matches.length >= count}
+                hasMore={loadingMore || matches.length >= count}
                 region={platform} continent={continent}
               />
             </div>
@@ -854,19 +797,20 @@ function RecentGames({
         right={
           <div style={{ display: 'flex', gap: 6 }}>
             {chips.map((c) => (
-              <button
-                key={String(c.val)}
-                onClick={() => setFilter(c.val)}
-                style={{
-                  fontSize: 12, fontWeight: 500, padding: '4px 11px', borderRadius: 999, cursor: 'pointer',
-                  border: filter === c.val ? `1px solid ${C.red}` : '1px solid rgba(255,255,255,0.10)',
-                  background: filter === c.val ? 'rgba(225,36,46,0.18)' : 'transparent',
-                  color: filter === c.val ? C.redHover : 'rgba(255,255,255,0.55)',
-                  transition: 'color .16s, border-color .16s, background .16s',
-                }}
-              >
-                {c.label}
-              </button>
+              <Tip key={String(c.val)} label={`Filtrar por ${c.label}`}>
+                <button
+                  onClick={() => setFilter(c.val)}
+                  style={{
+                    fontSize: 12, fontWeight: 500, padding: '4px 11px', borderRadius: 999, cursor: 'pointer',
+                    border: filter === c.val ? `1px solid ${C.red}` : '1px solid rgba(255,255,255,0.10)',
+                    background: filter === c.val ? 'rgba(225,36,46,0.18)' : 'transparent',
+                    color: filter === c.val ? C.redHover : 'rgba(255,255,255,0.55)',
+                    transition: 'color .16s, border-color .16s, background .16s',
+                  }}
+                >
+                  {c.label}
+                </button>
+              </Tip>
             ))}
           </div>
         }
@@ -1004,13 +948,17 @@ function MatchRowMini({ m, champByKey, puuid, region, continent, index = 0 }: {
 
       {/* KDA / CS / KP */}
       <div style={{ minWidth: 130 }}>
-        <div style={{ fontFamily: FONT_KDA, fontWeight: 700, fontSize: 15 }}>
-          {m.kills} / <span style={{ color: C.loss }}>{m.deaths}</span> / {m.assists}
-          <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginLeft: 6 }}>{kda} KDA</span>
-        </div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
-          {cs} CS ({csPerMin}/min){kp != null ? ` · KP ${kp}%` : ''}
-        </div>
+        <Tip label="Asesinatos / Muertes / Asistencias (KDA)">
+          <div style={{ fontFamily: FONT_KDA, fontWeight: 700, fontSize: 15 }}>
+            {m.kills} / <span style={{ color: C.loss }}>{m.deaths}</span> / {m.assists}
+            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginLeft: 6 }}>{kda} KDA</span>
+          </div>
+        </Tip>
+        <Tip label={`Súbditos por minuto${kp != null ? ' · Participación en asesinatos' : ''}`}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
+            {cs} CS ({csPerMin}/min){kp != null ? ` · KP ${kp}%` : ''}
+          </div>
+        </Tip>
       </div>
 
       <div style={{ flex: 1 }} />

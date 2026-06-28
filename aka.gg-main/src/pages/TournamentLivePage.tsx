@@ -37,10 +37,13 @@ interface LiveMatch {
   blueTeam: LiveParticipant[]; redTeam: LiveParticipant[];
   bannedChampions: Array<{ championId: number; teamId: number; pickTurn: number }>;
 }
+type ViewerAccess = 'owner' | 'participant' | 'public';
+
 interface LiveData {
   tournamentId: string; tournamentName: string;
   phase: string; region: string;
   logoUrl?: string; bannerUrl?: string;
+  viewerAccess?: ViewerAccess;
   matches: LiveMatch[]; timestamp?: number;
 }
 
@@ -291,7 +294,7 @@ function PostGameStats({ stats, version }: { stats: MatchStats; version: string 
       </div>
 
       {/* Blue team */}
-      <div className={`border-l-4 ${blueWon ? 'border-blue-400' : 'border-blue-900/50'}`}>
+      <div className={`rounded-lg ${blueWon ? 'bg-blue-500/[0.05] ring-1 ring-inset ring-blue-400/25' : 'ring-1 ring-inset ring-blue-400/10'}`}>
         <div className="px-3 py-1.5 flex items-center gap-2">
           <Shield className="h-3 w-3 text-blue-400" />
           <span className={`text-[10px] font-black uppercase tracking-wider ${blueWon ? 'text-blue-300' : 'text-blue-900'}`}>
@@ -305,7 +308,7 @@ function PostGameStats({ stats, version }: { stats: MatchStats; version: string 
       <div className="h-px bg-white/[0.04] mx-3" />
 
       {/* Red team */}
-      <div className={`border-l-4 ${!blueWon ? 'border-red-400' : 'border-red-900/50'}`}>
+      <div className={`rounded-lg ${!blueWon ? 'bg-red-500/[0.05] ring-1 ring-inset ring-red-400/25' : 'ring-1 ring-inset ring-red-400/10'}`}>
         <div className="px-3 py-1.5 flex items-center gap-2">
           <Swords className="h-3 w-3 text-red-400" />
           <span className={`text-[10px] font-black uppercase tracking-wider ${!blueWon ? 'text-red-300' : 'text-red-900'}`}>
@@ -320,9 +323,10 @@ function PostGameStats({ stats, version }: { stats: MatchStats; version: string 
 
 // ─── Main match card — cinematic broadcast layout ─────────────────────────────
 function MatchCard({
-  match, champMap, version, totalRounds, tournamentId,
+  match, champMap, version, totalRounds, tournamentId, canViewCodes,
 }: {
   match: LiveMatch; champMap: Map<number, string>; version: string; totalRounds: number; tournamentId: string;
+  canViewCodes: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -449,7 +453,7 @@ function MatchCard({
               <LiveTimer initial={match.gameLength} />
             </div>
           )}
-          {match.code && <CopyCode code={match.code} />}
+          {canViewCodes && match.code && <CopyCode code={match.code} />}
         </div>
       </div>
 
@@ -509,8 +513,11 @@ function MatchCard({
                 ? 'Partida lista — esperando que los jugadores entren al lobby'
                 : 'Esperando que empiece la partida…'}
             </p>
-            {match.code && (
+            {canViewCodes && match.code && (
               <p className="text-xs text-gray-700 mt-1">Código: <span className="font-mono text-gray-500">{match.code}</span></p>
+            )}
+            {!canViewCodes && (match.matchStatus === 'ready' || match.matchStatus === 'active') && (
+              <p className="text-xs text-gray-600 mt-1">Código disponible solo para jugadores inscritos</p>
             )}
           </div>
         </div>
@@ -724,11 +731,16 @@ export default function TournamentLivePage() {
     }
   }, [id]);
 
+  const canViewCodes = data?.viewerAccess === 'owner' || data?.viewerAccess === 'participant';
+
   // ── SSE connection ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
 
-    const url = `${API_BASE}/api/tournaments/${id}/live-stream`;
+    const token = localStorage.getItem('access_token');
+    const url = token
+      ? `${API_BASE}/api/tournaments/${id}/live-stream?token=${encodeURIComponent(token)}`
+      : `${API_BASE}/api/tournaments/${id}/live-stream`;
     const es   = new EventSource(url);
     esRef.current = es;
 
@@ -890,7 +902,7 @@ export default function TournamentLivePage() {
                   </h2>
                   <div className="space-y-5">
                     {liveMatches.map(m => (
-                      <MatchCard key={m.matchId} match={m} champMap={champMap} version={ddVersion} totalRounds={totalRounds} tournamentId={id ?? ''} />
+                      <MatchCard key={m.matchId} match={m} champMap={champMap} version={ddVersion} totalRounds={totalRounds} tournamentId={id ?? ''} canViewCodes={canViewCodes} />
                     ))}
                   </div>
                 </section>
@@ -905,7 +917,7 @@ export default function TournamentLivePage() {
                   </h2>
                   <div className="space-y-3">
                     {pendingMatches.map(m => (
-                      <MatchCard key={m.matchId} match={m} champMap={champMap} version={ddVersion} totalRounds={totalRounds} tournamentId={id ?? ''} />
+                      <MatchCard key={m.matchId} match={m} champMap={champMap} version={ddVersion} totalRounds={totalRounds} tournamentId={id ?? ''} canViewCodes={canViewCodes} />
                     ))}
                   </div>
                 </section>

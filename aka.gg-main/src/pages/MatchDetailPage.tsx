@@ -2,13 +2,12 @@
 // Rich solo match detail — reuses the tournament <MatchStatsDetail/> (KDA tables,
 // damage/gold charts, objectives, top performers) fed by /api/stats/match-stats.
 // ATAK.GG dark red/black brand. Players link to their profile.
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useLocation, useParams, useNavigate, Link } from 'react-router-dom';
-import { axiosInstance } from '@/lib/axios';
 import { MatchStatsDetail } from '@/components/MatchStatsDetail';
-import type { MatchStatsResponse } from '@/types/riot-match';
 import { ArrowLeft } from 'lucide-react';
 import { KataLoaderOverlay } from '@/components/KataLoader';
+import { useMatchStats } from '@/hooks/queries/stats';
 
 const C = {
   bg: '#0a0a0c', panel: '#131316', border: 'rgba(255,255,255,0.07)',
@@ -35,21 +34,10 @@ export default function MatchDetailPage() {
   const navigate = useNavigate();
   const region = state?.region || 'la1';
 
-  const [stats, setStats] = useState<MatchStatsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!regional || !matchId) return;
-    const ac = new AbortController();
-    setLoading(true); setError(null);
-    axiosInstance
-      .get(`/api/stats/match-stats/${regional}/${matchId}`, { signal: ac.signal })
-      .then(({ data }) => setStats(data))
-      .catch((e) => { if (!ac.signal.aborted) setError(e?.response?.data?.message || 'No se pudo cargar la partida'); })
-      .finally(() => { if (!ac.signal.aborted) setLoading(false); });
-    return () => ac.abort();
-  }, [regional, matchId]);
+  const { data: stats = null, isLoading: loading, error: queryError } = useMatchStats(regional, matchId);
+  const error = queryError
+    ? ((queryError as any)?.response?.data?.message || 'No se pudo cargar la partida')
+    : null;
 
   const queueLabel = useMemo(() => {
     const qid = (stats as any)?.queueId;

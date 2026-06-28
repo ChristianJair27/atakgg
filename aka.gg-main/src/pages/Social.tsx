@@ -1,8 +1,7 @@
-// src/pages/Social.tsx — glass/space · real API · likes/comments
-import { useState, useEffect, useRef, useCallback } from 'react';
+// src/pages/Social.tsx — glass/space · React Query · optimistic likes/comments/posts
+import { useState, useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { motion, AnimatePresence } from 'framer-motion';
-import { axiosInstance } from '@/lib/axios';
 import {
   Heart, MessageSquare, Trash2, Send, Users,
   Zap, Trophy, HelpCircle, Video, Star, ChevronDown,
@@ -10,18 +9,13 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ScrollVideoBg } from '@/components/ScrollVideoBg';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface Post {
-  id: number; user_id: number; user_name: string;
-  content: string; tag: string;
-  likes_count: number; comments_count: number;
-  created_at: string; liked_by_me: boolean;
-}
-interface Comment {
-  id: number; user_id: number; user_name: string;
-  content: string; created_at: string;
-}
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tip } from '@/components/ui/Tip';
+import {
+  useFeed, flattenFeed, useToggleLike, useCreatePost, useDeletePost,
+  useComments, useAddComment, useDeleteComment,
+  type Post, type Comment,
+} from '@/hooks/queries/social';
 
 // ─── Tag config ───────────────────────────────────────────────────────────────
 const TAGS = [
@@ -57,8 +51,9 @@ function getUser(): { name: string; id?: number } | null {
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 function Avatar({ name, size=9 }: { name: string; size?: number }) {
-  const colors = ['from-red-700 to-red-900','from-purple-700 to-purple-900',
-    'from-blue-700 to-blue-900','from-green-700 to-green-900','from-orange-700 to-orange-900'];
+  // ATAK palette — red family + warm neutrals + gold (no purple/blue/cyan AI-tells)
+  const colors = ['from-red-700 to-red-900','from-rose-800 to-red-950',
+    'from-zinc-700 to-zinc-900','from-stone-700 to-stone-900','from-amber-700 to-amber-900'];
   const color = colors[name.charCodeAt(0) % colors.length];
   return (
     <div className={`w-${size} h-${size} rounded-xl bg-gradient-to-br ${color}
@@ -102,62 +97,42 @@ function CommentItem({ c, myId, onDelete }: { c: Comment; myId?: number; onDelet
 
 // ─── Post card ────────────────────────────────────────────────────────────────
 function PostCard({
-  post, myUserId, onLike, onDelete, onCommentAdded,
+  post, myUserId, onLike, onDelete, feedTag,
 }: {
   post: Post; myUserId?: number;
-  onLike: (id:number)=>void;
+  onLike: (post: Post)=>void;
   onDelete: (id:number)=>void;
-  onCommentAdded: (postId:number)=>void;
+  feedTag: string;
 }) {
   const [showComments,  setShowComments]  = useState(false);
-  const [comments,      setComments]      = useState<Comment[]>([]);
-  const [loadingC,      setLoadingC]      = useState(false);
   const [newComment,    setNewComment]    = useState('');
-  const [sendingC,      setSendingC]      = useState(false);
-  const [liked,         setLiked]         = useState(post.liked_by_me);
-  const [likesCount,    setLikesCount]    = useState(post.likes_count);
   const isAuth = !!localStorage.getItem('access_token');
 
-  const loadComments = async () => {
-    setLoadingC(true);
-    try {
-      const { data } = await axiosInstance.get(`/api/social/posts/${post.id}/comments`);
-      setComments(data);
-    } catch {}
-    finally { setLoadingC(false); }
-  };
+  // Like state is read straight from the optimistically-updated cache.
+  const liked      = post.liked_by_me;
+  const likesCount = post.likes_count;
 
-  const toggleComments = () => {
-    if (!showComments && comments.length === 0) loadComments();
-    setShowComments(v => !v);
-  };
+  const commentsQ   = useComments(post.id, showComments);
+  const comments    = commentsQ.data ?? [];
+  const loadingC    = commentsQ.isLoading;
+  const addComment  = useAddComment(post.id, feedTag);
+  const delComment  = useDeleteComment(post.id);
+
+  const toggleComments = () => setShowComments(v => !v);
 
   const handleLike = () => {
     if (!isAuth) return;
-    setLiked(v => !v);
-    setLikesCount(c => liked ? c - 1 : c + 1);
-    onLike(post.id);
+    onLike(post); // optimistic in the feed cache
   };
 
-  const submitComment = async (e: React.FormEvent) => {
+  const submitComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim() || !isAuth) return;
-    setSendingC(true);
-    try {
-      const { data } = await axiosInstance.post(`/api/social/posts/${post.id}/comments`, { content: newComment.trim() });
-      setComments(c => [...c, data]);
-      setNewComment('');
-      onCommentAdded(post.id);
-    } catch (err: any) { alert(err.response?.data?.error || 'Error al comentar'); }
-    finally { setSendingC(false); }
+    addComment.mutate(newComment.trim(), { onSuccess: () => setNewComment('') });
   };
 
-  const deleteComment = async (cid: number) => {
-    try {
-      await axiosInstance.delete(`/api/social/comments/${cid}`);
-      setComments(c => c.filter(x => x.id !== cid));
-    } catch {}
-  };
+  const deleteComment = (cid: number) => delComment.mutate(cid);
+  const sendingC = addComment.isPending;
 
   return (
     <div className="rounded-2xl transition-all duration-200 overflow-hidden group hover:-translate-y-0.5"
@@ -180,10 +155,12 @@ function PostCard({
             </div>
           </div>
           {myUserId === post.user_id && (
-            <button onClick={() => onDelete(post.id)}
-              className="text-gray-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0">
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <Tip label="Eliminar publicación">
+              <button onClick={() => onDelete(post.id)}
+                className="text-gray-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </Tip>
           )}
         </div>
 
@@ -192,20 +169,24 @@ function PostCard({
 
         {/* Actions */}
         <div className="flex items-center gap-5 pt-2 border-t border-white/[0.05]">
-          <button onClick={handleLike}
-            disabled={!isAuth}
-            className={`flex items-center gap-1.5 text-sm transition-all duration-200 ${
-              liked ? 'text-red-400 scale-110' : 'text-gray-500 hover:text-red-400'
-            } disabled:cursor-default`}>
-            <Heart className={`h-4 w-4 transition-all ${liked ? 'fill-red-400' : ''}`} />
-            <span className="font-medium">{likesCount}</span>
-          </button>
+          <Tip label={liked ? 'Quitar me gusta' : 'Me gusta'}>
+            <button onClick={handleLike}
+              disabled={!isAuth}
+              className={`flex items-center gap-1.5 text-sm transition-all duration-200 ${
+                liked ? 'text-red-400 scale-110' : 'text-gray-500 hover:text-red-400'
+              } disabled:cursor-default`}>
+              <Heart className={`h-4 w-4 transition-all ${liked ? 'fill-red-400' : ''}`} />
+              <span className="font-medium">{likesCount}</span>
+            </button>
+          </Tip>
 
-          <button onClick={toggleComments}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-400 transition-colors">
-            <MessageSquare className="h-4 w-4" />
-            <span className="font-medium">{post.comments_count}</span>
-          </button>
+          <Tip label="Ver comentarios">
+            <button onClick={toggleComments}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-400 transition-colors">
+              <MessageSquare className="h-4 w-4" />
+              <span className="font-medium">{post.comments_count}</span>
+            </button>
+          </Tip>
         </div>
       </div>
 
@@ -221,8 +202,16 @@ function PostCard({
           >
             <div className="p-5 space-y-4">
               {loadingC && (
-                <div className="flex justify-center py-2">
-                  <RefreshCw className="h-4 w-4 text-gray-600 animate-spin" />
+                <div className="space-y-3">
+                  {[0, 1].map(i => (
+                    <div key={i} className="flex gap-3">
+                      <Skeleton variant="circle" width={28} height={28} />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton width="30%" height={12} />
+                        <Skeleton width="80%" height={12} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
               {comments.map(c => (
@@ -263,23 +252,22 @@ function PostCard({
 }
 
 // ─── Compose box ──────────────────────────────────────────────────────────────
-function ComposeBox({ onPosted }: { onPosted: (post: Post) => void }) {
+function ComposeBox({ feedTag }: { feedTag: string }) {
   const [content,  setContent]  = useState('');
   const [tag,      setTag]      = useState<TagKey>('general');
-  const [loading,  setLoading]  = useState(false);
   const [focused,  setFocused]  = useState(false);
   const user = getUser();
+  const createPost = useCreatePost(feedTag);
+  const loading = createPost.isPending;
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
-    setLoading(true);
-    try {
-      const { data } = await axiosInstance.post('/api/social/posts', { content: content.trim(), tag });
-      onPosted(data);
-      setContent('');
-    } catch (err: any) { alert(err.response?.data?.error || 'Error al publicar'); }
-    finally { setLoading(false); }
+    // Optimistic: the new post appears instantly via useCreatePost.onMutate.
+    createPost.mutate(
+      { content: content.trim(), tag },
+      { onSuccess: () => setContent('') },
+    );
   };
 
   return (
@@ -353,29 +341,22 @@ function ComposeBox({ onPosted }: { onPosted: (post: Post) => void }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Social() {
-  const [posts,       setPosts]       = useState<Post[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page,        setPage]        = useState(1);
-  const [totalPages,  setTotalPages]  = useState(1);
   const [tagFilter,   setTagFilter]   = useState('all');
   const [mousePos,    setMousePos]    = useState({ x:0, y:0 });
   const headerRef = useRef<HTMLDivElement>(null);
   const user   = getUser();
   const isAuth = !!localStorage.getItem('access_token');
 
-  const fetchPosts = useCallback(async (p=1, tag='all', append=false) => {
-    if (p === 1) setLoading(true); else setLoadingMore(true);
-    try {
-      const { data } = await axiosInstance.get('/api/social/posts', { params: { page:p, limit:20, tag } });
-      setPosts(prev => append ? [...prev, ...data.posts] : data.posts);
-      setTotalPages(data.pages);
-      setPage(p);
-    } catch {}
-    finally { setLoading(false); setLoadingMore(false); }
-  }, []);
+  // Paginated feed via React Query (caching + dedupe). Filtering by tag swaps
+  // the query key, so each filter keeps its own cache.
+  const feed = useFeed(tagFilter);
+  const posts = flattenFeed(feed.data?.pages);
+  const loading = feed.isLoading;
+  const loadingMore = feed.isFetchingNextPage;
+  const hasMore = feed.hasNextPage;
 
-  useEffect(() => { fetchPosts(1, tagFilter); }, [tagFilter]);
+  const toggleLike = useToggleLike(tagFilter);
+  const deletePost = useDeletePost(tagFilter);
 
   useEffect(() => {
     if (loading || !headerRef.current) return;
@@ -385,26 +366,11 @@ export default function Social() {
     );
   }, [loading]);
 
-  const handleLike = async (postId: number) => {
-    try {
-      await axiosInstance.post(`/api/social/posts/${postId}/like`);
-    } catch {}
-  };
+  const handleLike = (post: Post) => toggleLike.mutate(post);
 
-  const handleDelete = async (postId: number) => {
+  const handleDelete = (postId: number) => {
     if (!confirm('¿Eliminar esta publicación?')) return;
-    try {
-      await axiosInstance.delete(`/api/social/posts/${postId}`);
-      setPosts(p => p.filter(x => x.id !== postId));
-    } catch (err: any) { alert(err.response?.data?.error || 'Error al eliminar'); }
-  };
-
-  const handleCommentAdded = (postId: number) => {
-    setPosts(p => p.map(x => x.id===postId ? {...x, comments_count: x.comments_count+1} : x));
-  };
-
-  const onPosted = (post: Post) => {
-    setPosts(p => [post, ...p]);
+    deletePost.mutate(postId);
   };
 
   const ALL_TAGS = [{ key:'all', label:'Todo', icon:<Star className="h-3.5 w-3.5"/> }, ...TAGS];
@@ -441,7 +407,7 @@ export default function Social() {
 
         {/* Compose or login prompt */}
         {isAuth ? (
-          <ComposeBox onPosted={onPosted} />
+          <ComposeBox feedTag={tagFilter} />
         ) : (
           <div className="rounded-2xl p-6 text-center mb-6"
             style={{
@@ -464,15 +430,17 @@ export default function Social() {
         {/* Tag filter pills */}
         <div className="flex flex-wrap gap-2 mb-6">
           {ALL_TAGS.map(t => (
-            <button key={t.key} onClick={() => setTagFilter(t.key)}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold
-                border transition-all duration-200 ${
-                tagFilter === t.key
-                  ? 'bg-white/[0.1] border-white/30 text-white'
-                  : 'border-white/[0.06] text-gray-500 hover:text-gray-300 hover:border-white/[0.12]'
-              }`}>
-              {t.icon}{t.label}
-            </button>
+            <Tip key={t.key} label={`Filtrar: ${t.label}`}>
+              <button onClick={() => setTagFilter(t.key)}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold
+                  border transition-all duration-200 ${
+                  tagFilter === t.key
+                    ? 'bg-white/[0.1] border-white/30 text-white'
+                    : 'border-white/[0.06] text-gray-500 hover:text-gray-300 hover:border-white/[0.12]'
+                }`}>
+                {t.icon}{t.label}
+              </button>
+            </Tip>
           ))}
         </div>
 
@@ -480,17 +448,17 @@ export default function Social() {
         {loading ? (
           <div className="space-y-4">
             {[1,2,3].map(i => (
-              <div key={i} className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 animate-pulse">
+              <div key={i} className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5">
                 <div className="flex gap-3 mb-4">
-                  <div className="w-9 h-9 rounded-xl bg-white/[0.06]" />
+                  <Skeleton variant="circle" width={36} height={36} style={{ borderRadius: 12 }} />
                   <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-white/[0.06] rounded w-1/3" />
-                    <div className="h-3 bg-white/[0.06] rounded w-1/4" />
+                    <Skeleton width="33%" height={12} />
+                    <Skeleton width="25%" height={12} />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className="h-3 bg-white/[0.06] rounded" />
-                  <div className="h-3 bg-white/[0.06] rounded w-5/6" />
+                  <Skeleton width="100%" height={12} />
+                  <Skeleton width="83%" height={12} />
                 </div>
               </div>
             ))}
@@ -509,16 +477,16 @@ export default function Social() {
                       myUserId={user?.id}
                       onLike={handleLike}
                       onDelete={handleDelete}
-                      onCommentAdded={handleCommentAdded}
+                      feedTag={tagFilter}
                     />
                   </motion.div>
                 ))}
 
                 {/* Load more */}
-                {page < totalPages && (
+                {hasMore && (
                   <div className="text-center pt-4">
                     <button
-                      onClick={() => fetchPosts(page+1, tagFilter, true)}
+                      onClick={() => feed.fetchNextPage()}
                       disabled={loadingMore}
                       className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold
                         border border-white/[0.08] text-gray-400 hover:text-white hover:border-white/20

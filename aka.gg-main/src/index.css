@@ -1,9 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital,wght@0,400;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital,wght@0,400;1,400&display=swap');
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-serif: "Instrument Serif", Georgia, serif;
 }
@@ -15,7 +15,7 @@ body {
   overflow-x: hidden;
   background: #000;
   color: #fff;
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Barlow", ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "rlig" 1, "calt" 1;
@@ -125,12 +125,9 @@ body {
 .glow-red { box-shadow: 0 0 24px rgba(239,68,68,0.4), 0 0 60px rgba(239,68,68,0.15); }
 .glow-red-text { text-shadow: 0 0 20px rgba(239,68,68,0.7), 0 0 60px rgba(239,68,68,0.3); }
 .gradient-red { background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); }
-.gradient-red-text {
-  background: linear-gradient(90deg, #ef4444 0%, #f97316 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
+/* Solid brand red (was gradient-clip text — a common AI tell). Kept as a class
+   for compatibility; prefer solid color on text for a premium, intentional look. */
+.gradient-red-text { color: #ef4444; }
 
 /* ── Gaming buttons (legacy) ────────────────────────────────────────────────── */
 .btn-gaming {
@@ -151,6 +148,10 @@ body {
   transition: all 0.25s ease;
 }
 .card-gaming:hover { border-color: rgba(239,68,68,0.3); transform: translateY(-4px); box-shadow: 0 0 30px rgba(239,68,68,0.12); }
+
+/* ── Text selection (premium red tint) ──────────────────────────────────────── */
+::selection { background: rgba(239, 68, 68, 0.28); color: #fff; }
+::-moz-selection { background: rgba(239, 68, 68, 0.28); color: #fff; }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }

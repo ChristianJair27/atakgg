@@ -1,5 +1,5 @@
 // src/pages/Dashboard.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "@/features/auth/useAuth";
@@ -12,10 +12,16 @@ import {
   MessageSquare,
   Target,
   Award,
-  RefreshCw,
 } from "lucide-react";
 import { axiosInstance } from "@/lib/axios";
 import { ScrollVideoBg } from "@/components/ScrollVideoBg";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tip } from "@/components/ui/Tip";
+import { useQueryClient } from "@tanstack/react-query";
+import { useOverview } from "@/hooks/queries/players";
+import { useTournaments } from "@/hooks/queries/tournaments";
+import { qk } from "@/hooks/queries/keys";
+import { TournamentDashboardPanel } from "@/components/TournamentDashboardPanel";
 
 // ─── Brand tokens (shared ATAK vocabulary) ──────────────────────────────────
 const C = {
@@ -167,13 +173,25 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   // ===== estado de overview / link =====
-  const [loading, setLoading] = useState(true);
-  const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  // Overview is fetched via React Query (caching + dedupe with other pages).
+  const overviewQ = useOverview();
+  const overview = (overviewQ.data ?? null) as OverviewResponse | null;
+  const loading = overviewQ.isLoading;
   const [err, setErr] = useState("");
 
   const [riotId, setRiotId] = useState("");
   const [platform, setPlatform] = useState("la1");
   const [linking, setLinking] = useState(false);
+
+  // ===== próximo torneo (reusa el cache de /api/tournaments) =====
+  const { data: tournaments = [] } = useTournaments();
+  const nextT = useMemo(() => {
+    const list: any[] = Array.isArray(tournaments) ? tournaments : [];
+    const upcoming = list
+      .filter((t) => t.phase === "registration" || t.phase === "checkin")
+      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+    return upcoming[0] ?? list.find((t) => t.phase === "active") ?? null;
+  }, [tournaments]);
 
   // ===== procesa payload OAuth (cuando vuelves de Google) =====
   useEffect(() => {
@@ -196,26 +214,14 @@ const Dashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ===== llamadas a API =====
-  const fetchOverview = async () => {
-    setLoading(true);
-    setErr("");
-    try {
-      const { data } = await axiosInstance.get<OverviewResponse>("/api/players/me/overview");
-      setOverview(data);
-    } catch (e: any) {
-      setErr(e?.response?.data?.msg || "Error cargando overview");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ===== vincular cuenta =====
+  const qc = useQueryClient();
   const linkAccount = async () => {
     setLinking(true);
     setErr("");
     try {
       await axiosInstance.post("/api/players/link", { riotId, platform });
-      await fetchOverview();
+      await qc.invalidateQueries({ queryKey: qk.overview() });
     } catch (e: any) {
       setErr(e?.response?.data?.msg || "No se pudo vincular la cuenta");
     } finally {
@@ -223,26 +229,54 @@ const Dashboard = () => {
     }
   };
 
+  // Surface any overview fetch error.
   useEffect(() => {
-    fetchOverview();
-  }, []);
+    if (overviewQ.error) {
+      setErr((overviewQ.error as any)?.response?.data?.msg || "Error cargando overview");
+    }
+  }, [overviewQ.error]);
 
-  // ===== loading =====
+  // ===== loading — content-shaped skeleton (stat cards + panels) =====
   if (loading) {
     return (
-      <div
-        style={{
-          minHeight: "60vh",
-          display: "grid",
-          placeItems: "center",
-          color: "rgba(255,255,255,0.55)",
-          fontFamily: FONT_BODY,
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-          <RefreshCw size={26} style={{ color: C.red }} className="animate-spin" />
-          <span style={{ fontSize: 14 }}>Cargando tu dashboard…</span>
+      <div style={{ minHeight: "100vh", background: C.bg, color: "#e8e8ea", fontFamily: FONT_BODY }}>
+        <ScrollVideoBg />
+        <div style={{ position: "relative", zIndex: 1, maxWidth: 1180, margin: "0 auto", padding: "88px 18px 80px" }}>
+          <div style={{ marginBottom: 30 }}>
+            <Skeleton width={360} height={32} />
+            <div style={{ marginTop: 10 }}><Skeleton width={260} height={14} /></div>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+              gap: 18,
+              marginBottom: 28,
+            }}
+          >
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} style={{ ...PANEL_SURFACE, padding: 22 }}>
+                <Skeleton width="60%" height={13} />
+                <div style={{ marginTop: 8 }}><Skeleton width="40%" height={26} /></div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 24 }} className="atak-dash-grid">
+            <div style={{ ...PANEL_SURFACE, padding: 26, minHeight: 220 }}>
+              <Skeleton width={160} height={16} />
+              <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+                {[0, 1, 2].map((i) => <Skeleton key={i} height={96} variant="block" />)}
+              </div>
+            </div>
+            <div style={{ ...PANEL_SURFACE, padding: 26, minHeight: 220 }}>
+              <Skeleton variant="circle" width={64} height={64} style={{ margin: "0 auto" }} />
+              <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                <Skeleton height={14} /><Skeleton height={14} width="70%" />
+              </div>
+            </div>
+          </div>
         </div>
+        <style>{`@media (max-width: 900px){ .atak-dash-grid{ grid-template-columns: 1fr !important; } }`}</style>
       </div>
     );
   }
@@ -382,12 +416,14 @@ const Dashboard = () => {
       value: `${s.totalMatches ?? 0}`,
       icon: <BarChart3 size={26} />,
       color: "#ffffff",
+      tip: "Partidas analizadas recientemente",
     },
     {
       label: "Win Rate",
       value: `${s.winRate ?? 0}%`,
       icon: <Target size={26} />,
       color: (s.winRate ?? 0) >= 50 ? C.win : C.loss,
+      tip: "Porcentaje de victorias en tus partidas recientes",
     },
     {
       label: "Rango Actual",
@@ -395,12 +431,14 @@ const Dashboard = () => {
       sub: s.lp != null ? `${s.lp} LP` : "",
       icon: <Award size={26} />,
       color: C.gold,
+      tip: "Tu rango en clasificatoria",
     },
     {
       label: "Torneos",
       value: `${s.tournamentsJoined ?? 0}`,
       icon: <Trophy size={26} />,
       color: C.red,
+      tip: "Torneos en los que has participado",
     },
   ];
 
@@ -444,6 +482,8 @@ const Dashboard = () => {
           </p>
         </motion.div>
 
+        <TournamentDashboardPanel />
+
         {/* Quick Stats */}
         <div
           style={{
@@ -455,27 +495,29 @@ const Dashboard = () => {
         >
           {statCards.map((c, i) => (
             <Panel key={c.label} delay={i * 0.06} hover style={{ padding: 22 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.5)" }}>{c.label}</p>
-                  <p
-                    style={{
-                      margin: "4px 0 0",
-                      fontFamily: FONT_COND,
-                      fontWeight: 800,
-                      fontSize: 26,
-                      color: c.color,
-                      lineHeight: 1.1,
-                    }}
-                  >
-                    {c.value}
-                  </p>
-                  {c.sub ? (
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{c.sub}</p>
-                  ) : null}
+              <Tip label={c.tip}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 12.5, color: "rgba(255,255,255,0.5)" }}>{c.label}</p>
+                    <p
+                      style={{
+                        margin: "4px 0 0",
+                        fontFamily: FONT_COND,
+                        fontWeight: 800,
+                        fontSize: 26,
+                        color: c.color,
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {c.value}
+                    </p>
+                    {c.sub ? (
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,0.45)" }}>{c.sub}</p>
+                    ) : null}
+                  </div>
+                  <span style={{ color: c.color, opacity: 0.85, flexShrink: 0 }}>{c.icon}</span>
                 </div>
-                <span style={{ color: c.color, opacity: 0.85, flexShrink: 0 }}>{c.icon}</span>
-              </div>
+              </Tip>
             </Panel>
           ))}
         </div>
@@ -670,9 +712,33 @@ const Dashboard = () => {
                   <Calendar size={15} /> Próximo Torneo
                 </span>
               </SectionTitle>
-              <p style={{ textAlign: "center", fontSize: 13.5, color: "rgba(255,255,255,0.45)", margin: "6px 0" }}>
-                Próximamente…
-              </p>
+              {nextT ? (
+                <div
+                  onClick={() => navigate(`/tournaments/${nextT.id}`)}
+                  style={{ cursor: "pointer", padding: "4px 0" }}
+                >
+                  <div style={{ fontFamily: FONT_COND, fontWeight: 700, fontSize: 18, color: "#fff", lineHeight: 1.1, marginBottom: 6 }}>
+                    {nextT.name}
+                  </div>
+                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: "rgba(255,255,255,0.6)" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <Calendar size={13} />
+                      {new Date(nextT.startDate).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
+                    </span>
+                    {nextT.prize ? <span style={{ color: C.gold }}>🏆 {nextT.prize}</span> : null}
+                  </div>
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: nextT.phase === "active" ? C.win : C.gold }}>
+                      {nextT.phase === "registration" ? "Inscripciones abiertas" : nextT.phase === "checkin" ? "Check-in" : "En curso"}
+                    </span>
+                    <span style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>Ver →</span>
+                  </div>
+                </div>
+              ) : (
+                <p style={{ textAlign: "center", fontSize: 13.5, color: "rgba(255,255,255,0.45)", margin: "6px 0" }}>
+                  No hay torneos próximos
+                </p>
+              )}
             </Panel>
           </div>
         </div>

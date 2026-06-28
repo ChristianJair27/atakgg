@@ -1,7 +1,9 @@
 export interface User {
-  id: string;
+  id: number | string;
   name: string;
   email: string;
+  role?: 'user' | 'admin';
+  avatar_url?: string | null;
 }
 
 export interface LoginRequest {
