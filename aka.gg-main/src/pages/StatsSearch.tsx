@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import gsap from 'gsap';
 import { motion, AnimatePresence } from 'framer-motion';
-import { axiosInstance } from '@/lib/axios';
+import { useQueryClient } from '@tanstack/react-query';
+import { resolveRiotIdQueryOptions } from '@/hooks/queries/stats';
 import {
   Search, Clock, X, BarChart3, Trophy,
   Target, Zap, TrendingUp, Users, Globe, ArrowRight,
@@ -126,6 +127,7 @@ function RegionGrid({ selected, onSelect }: { selected: string; onSelect: (v: st
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function StatsSearch() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
 
   const [isSearching, setIsSearching] = useState(false);
   const [errorMsg,    setErrorMsg]    = useState<string | null>(null);
@@ -164,9 +166,11 @@ export default function StatsSearch() {
     setErrorMsg(null);
     try {
       const [gameName = '', tagLine = ''] = form.riotId.trim().split('#');
-      const { data } = await axiosInstance.get('/api/stats/resolve', {
-        params: { region: form.region, gameName, tagLine },
-      });
+      // Resolve through React Query so the result is cached (the profile page then
+      // reuses this exact resolve entry — instant) and deduped.
+      const data = await qc.fetchQuery(
+        resolveRiotIdQueryOptions(form.region, gameName, tagLine),
+      );
       const encoded = encodeURIComponent(`${data.gameName}#${data.tagLine}`);
       saveRecent(form.riotId, form.region);
       navigate(`/stats/${form.region}/${encoded}`, { state: { puuid: data.puuid } });

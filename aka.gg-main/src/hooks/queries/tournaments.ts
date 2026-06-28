@@ -1,7 +1,31 @@
-// Tournament query hooks — wrap the existing /api/tournaments endpoints.
-import { useQuery } from "@tanstack/react-query";
+// Tournament query + mutation hooks — wrap the existing /api/tournaments endpoints.
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { axiosInstance } from "@/lib/axios";
 import { qk } from "./keys";
+
+export interface Standing {
+  position: number;
+  team: string;
+  wins: number;
+  losses: number;
+  points: number;
+}
+
+export interface BracketMatch {
+  id: string;
+  round: number;
+  matchNumber: number;
+  team1: string | null;
+  team2: string | null;
+  winner: string | null;
+  code: string | null;
+  matchStatus: string;
+  score1?: number;
+  score2?: number;
+  gameId?: number;
+  gameRegion?: string;
+}
 
 export interface Tournament {
   id: string;
@@ -16,6 +40,10 @@ export interface Tournament {
   description: string;
   riotTournamentId?: number;
   codesAvailable?: number;
+  standings?: Standing[];
+  bracket?: BracketMatch[];
+  checkinDeadline?: string;
+  createdBy?: number;
 }
 
 export function useTournaments() {
@@ -39,13 +67,212 @@ export function useTournament(id?: string) {
   });
 }
 
+export interface Registration {
+  teamName: string;
+  captainRiotId: string;
+  players: Array<{ name: string; riotId: string }>;
+  contact: string;
+  registeredAt: string;
+  checkedIn: boolean;
+  checkedInAt?: string;
+}
+
 export function useRegistrations(id?: string) {
   return useQuery({
     queryKey: id ? qk.registrations(id) : qk.registrations("_"),
     enabled: Boolean(id),
     queryFn: async () => {
-      const { data } = await axiosInstance.get(`/api/tournaments/${id}/registrations`);
+      const { data } = await axiosInstance.get<Registration[]>(`/api/tournaments/${id}/registrations`);
+      return Array.isArray(data) ? data : [];
+    },
+  });
+}
+
+// ── Mutations ────────────────────────────────────────────────────────────────
+// Tournament writes touch both the tournament (phase/bracket/standings) and its
+// registrations. Where a clean optimistic update exists (register, check-in) we
+// apply it with rollback; otherwise we do mutation + invalidate + toast so the
+// cached reads reconcile with the server. All errors surface a sonner toast.
+
+interface RegisterTeamInput {
+  teamName: string;
+  captainRiotId: string;
+  players: Array<{ name: string; riotId: string }>;
+  contact: string;
+}
+
+export function useRegisterTeam(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: RegisterTeamInput) => {
+      const { data } = await axiosInstance.post(`/api/tournaments/${id}/register`, input);
       return data;
     },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: qk.registrations(id) });
+      const prevRegs = qc.getQueryData<Registration[]>(qk.registrations(id));
+      const prevTour = qc.getQueryData<Tournament>(qk.tournament(id));
+      const optimistic: Registration = {
+        teamName: input.teamName,
+        captainRiotId: input.captainRiotId,
+        players: input.players,
+        contact: input.contact,
+        registeredAt: new Date().toISOString(),
+        checkedIn: false,
+      };
+      qc.setQueryData<Registration[]>(qk.registrations(id), (old) => [...(old ?? []), optimistic]);
+      qc.setQueryData<Tournament>(qk.tournament(id), (old) =>
+        old ? { ...old, participants: old.participants + 1 } : old,
+      );
+      return { prevRegs, prevTour };
+    },
+    onError: (_e, _input, ctx) => {
+      if (ctx?.prevRegs) qc.setQueryData(qk.registrations(id), ctx.prevRegs);
+      if (ctx?.prevTour) qc.setQueryData(qk.tournament(id), ctx.prevTour);
+      toast.error("No se pudo inscribir el equipo");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: qk.registrations(id) });
+      qc.invalidateQueries({ queryKey: qk.tournament(id) });
+      qc.invalidateQueries({ queryKey: qk.tournaments() });
+    },
+  });
+}
+
+interface CheckinInput {
+  teamName: string;
+  captainRiotId: string;
+}
+
+export function useCheckin(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CheckinInput) => {
+      const { data } = await axiosInstance.post(`/api/tournaments/${id}/checkin`, input);
+      return data as { checkedIn: number; total: number };
+    },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: qk.registrations(id) });
+      const prevRegs = qc.getQueryData<Registration[]>(qk.registrations(id));
+      qc.setQueryData<Registration[]>(qk.registrations(id), (old) =>
+        (old ?? []).map((r) =>
+          r.teamName === input.teamName
+            ? { ...r, checkedIn: true, checkedInAt: new Date().toISOString() }
+            : r,
+        ),
+      );
+      return { prevRegs };
+    },
+    onError: (_e, _input, ctx) => {
+      if (ctx?.prevRegs) qc.setQueryData(qk.registrations(id), ctx.prevRegs);
+      toast.error("No se pudo hacer check-in");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.registrations(id) }),
+  });
+}
+
+// Reconcile-only mutations: the server recomputes phase / bracket / standings, so
+// after these we invalidate the affected reads rather than guess an optimistic state.
+function invalidateTournament(qc: ReturnType<typeof useQueryClient>, id: string) {
+  qc.invalidateQueries({ queryKey: qk.tournament(id) });
+  qc.invalidateQueries({ queryKey: qk.registrations(id) });
+  qc.invalidateQueries({ queryKey: qk.tournaments() });
+}
+
+export function useCloseRegistration(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await axiosInstance.post(`/api/tournaments/${id}/close-registration`);
+    },
+    onError: (e: any) =>
+      toast.error("No se pudieron cerrar las inscripciones", {
+        description: e?.response?.data?.error || e?.message,
+      }),
+    onSettled: () => invalidateTournament(qc, id),
+  });
+}
+
+export function useStartTournament(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await axiosInstance.post(`/api/tournaments/${id}/start`);
+    },
+    onError: (e: any) =>
+      toast.error("No se pudo iniciar el torneo", {
+        description: e?.response?.data?.error || e?.message,
+      }),
+    onSettled: () => invalidateTournament(qc, id),
+  });
+}
+
+export function useGenerateCodes(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (count: number = 20) => {
+      const { data } = await axiosInstance.post(`/api/tournaments/${id}/generate-codes`, { count });
+      return data as { generated: number; poolSize: number };
+    },
+    onSuccess: (data) => {
+      toast.success(`${data.generated} códigos generados`, {
+        description: `Pool disponible: ${data.poolSize}`,
+      });
+    },
+    onError: (e: any) =>
+      toast.error("No se pudieron generar los códigos", {
+        description: e?.response?.data?.error || e?.message,
+      }),
+    onSettled: () => invalidateTournament(qc, id),
+  });
+}
+
+export function useActivateMatch(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (matchId: string) => {
+      const { data } = await axiosInstance.post(`/api/tournaments/${id}/matches/${matchId}/activate`);
+      return (data?.code ?? null) as string | null;
+    },
+    onError: (e: any) =>
+      toast.error("No se pudo activar el partido", {
+        description: e?.response?.data?.error || e?.message,
+      }),
+    onSettled: () => invalidateTournament(qc, id),
+  });
+}
+
+interface ReportResultInput {
+  matchId: string;
+  winner: string;
+  score1: number;
+  score2: number;
+}
+
+export function useReportResult(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ matchId, winner, score1, score2 }: ReportResultInput) => {
+      const { data } = await axiosInstance.post(
+        `/api/tournaments/${id}/matches/${matchId}/result`,
+        { winner, score1, score2 },
+      );
+      return data as { tournamentComplete?: boolean; champion?: string };
+    },
+    onSuccess: (data, { winner }) => {
+      if (data.tournamentComplete) {
+        toast.success("🏆 ¡Torneo finalizado!", {
+          description: `Campeón: ${data.champion}`,
+          duration: 8000,
+        });
+      } else {
+        toast.success("Resultado registrado", { description: `${winner} avanza` });
+      }
+    },
+    onError: (e: any) =>
+      toast.error("No se pudo registrar el resultado", {
+        description: e?.response?.data?.error || e?.message,
+      }),
+    onSettled: () => invalidateTournament(qc, id),
   });
 }

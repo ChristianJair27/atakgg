@@ -23,5 +23,12 @@ export const qk = {
       ["stats", "matchStats", regional, matchId] as const,
     recentTeammates: (continent: string, puuid?: string) =>
       ["stats", "recentTeammates", continent, puuid] as const,
+    matches: (continent: string, puuid: string | undefined, count: number) =>
+      ["stats", "matches", continent, puuid, count] as const,
+    leagueRank: (platform: string, puuid?: string) =>
+      ["stats", "leagueRank", platform, puuid] as const,
+    bestPlayers: (platform: string, puuid?: string) =>
+      ["stats", "bestPlayers", platform, puuid] as const,
+    seasons: (puuid?: string) => ["stats", "seasons", puuid] as const,
   },
 } as const;

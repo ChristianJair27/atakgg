@@ -5,10 +5,21 @@ import {
   BarChart2, GitBranch, List, Play, RefreshCw, UserCheck,
   Lock, Shield, Activity, Clock,
 } from 'lucide-react';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import gsap from 'gsap';
 import { motion, AnimatePresence } from 'framer-motion';
-import axiosInstance from '@/lib/axios';
+import {
+  useTournament,
+  useRegistrations,
+  useCheckin,
+  useCloseRegistration,
+  useStartTournament,
+  useGenerateCodes,
+  useActivateMatch,
+  useReportResult,
+  type Registration as RegistrationType,
+  type Tournament as TournamentType,
+} from '@/hooks/queries/tournaments';
 import { TournamentBracket } from '@/components/TournamentBracket';
 import { MatchStatsDetail } from '@/components/MatchStatsDetail';
 import { TournamentGlobalStats } from '@/components/TournamentGlobalStats';
@@ -44,25 +55,9 @@ function ConfirmButton({ trigger, title, description, onConfirm }: {
 
 type TournamentPhase = 'registration' | 'checkin' | 'active' | 'complete';
 
-interface Standing { position:number; team:string; wins:number; losses:number; points:number; }
-interface BracketMatch {
-  id:string; round:number; matchNumber:number;
-  team1:string|null; team2:string|null; winner:string|null;
-  code:string|null; matchStatus:string; score1?:number; score2?:number;
-  gameId?:number; gameRegion?:string;
-}
-interface Tournament {
-  id:string; name:string; phase:TournamentPhase; status:string;
-  participants:number; maxParticipants:number; prize:string;
-  startDate:string; format:string; description:string;
-  standings?:Standing[]; riotTournamentId?:number; bracket?:BracketMatch[];
-  checkinDeadline?:string; codesAvailable:number; createdBy?:number;
-}
-interface Registration {
-  teamName:string; captainRiotId:string;
-  players:Array<{name:string; riotId:string}>;
-  contact:string; registeredAt:string; checkedIn:boolean; checkedInAt?:string;
-}
+// Shapes live in the query-hook module (single source of truth); alias here.
+type Tournament = TournamentType;
+type Registration = RegistrationType;
 
 // ─── Glass card ───────────────────────────────────────────────────────────────
 function GlassCard({ children, className='' }: { children:React.ReactNode; className?:string }) {
@@ -128,24 +123,24 @@ function CopyButton({ text }: { text: string }) {
 }
 
 // ─── Check-in panel ───────────────────────────────────────────────────────────
-function CheckinPanel({ tournamentId, onDone }: { tournamentId:string; onDone:()=>void }) {
+function CheckinPanel({ tournamentId }: { tournamentId:string }) {
   const [teamName, setTeamName]       = useState('');
   const [captainRiotId, setCaptain]   = useState('');
-  const [loading, setLoading]         = useState(false);
   const [success, setSuccess]         = useState('');
+  const checkin = useCheckin(tournamentId);
+  const loading = checkin.isPending;
 
-  const handle = async () => {
+  const handle = () => {
     if (!teamName) return;
-    setLoading(true);
-    try {
-      const { data } = await axiosInstance.post(`/api/tournaments/${tournamentId}/checkin`, { teamName, captainRiotId });
-      setSuccess(`✓ Check-in confirmado! ${data.checkedIn}/${data.total} equipos listos.`);
-      toast.success('Check-in confirmado', { description: `${data.checkedIn}/${data.total} equipos listos` });
-      onDone();
-    } catch (err: any) {
-      toast.error('No se pudo hacer check-in', { description: err.response?.data?.error || 'Error al hacer check-in' });
-    }
-    finally { setLoading(false); }
+    checkin.mutate(
+      { teamName, captainRiotId },
+      {
+        onSuccess: (data) => {
+          setSuccess(`✓ Check-in confirmado! ${data.checkedIn}/${data.total} equipos listos.`);
+          toast.success('Check-in confirmado', { description: `${data.checkedIn}/${data.total} equipos listos` });
+        },
+      },
+    );
   };
 
   if (success) return (
@@ -185,16 +180,12 @@ function CheckinPanel({ tournamentId, onDone }: { tournamentId:string; onDone:()
 }
 
 // ─── Admin panel ──────────────────────────────────────────────────────────────
-function AdminPanel({ tournament, registrations, onRefresh }: {
-  tournament:Tournament; registrations:Registration[]; onRefresh:()=>void;
+function AdminPanel({ tournament, registrations }: {
+  tournament:Tournament; registrations:Registration[];
 }) {
-  const [loading, setLoading] = useState<string|null>(null);
-  const run = async (key:string, fn:()=>Promise<void>) => {
-    setLoading(key);
-    try { await fn(); onRefresh(); }
-    catch (err:any) { toast.error('Error', { description: err.response?.data?.error || err.message }); }
-    finally { setLoading(null); }
-  };
+  const closeReg = useCloseRegistration(tournament.id);
+  const start    = useStartTournament(tournament.id);
+  const codes    = useGenerateCodes(tournament.id);
   const checkedIn = registrations.filter(r=>r.checkedIn).length;
 
   return (
@@ -205,23 +196,23 @@ function AdminPanel({ tournament, registrations, onRefresh }: {
       <div className="flex flex-wrap gap-2">
         {tournament.phase === 'registration' && (
           <>
-            <button disabled={loading==='close'||registrations.length<2}
-              onClick={()=>run('close',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/close-registration`).then(()=>{}))}
+            <button disabled={closeReg.isPending||registrations.length<2}
+              onClick={()=>closeReg.mutate()}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-700 hover:bg-orange-600
                 text-white text-sm font-semibold transition-all disabled:opacity-40">
-              {loading==='close'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Lock className="h-4 w-4"/>}
+              {closeReg.isPending?<RefreshCw className="h-4 w-4 animate-spin"/>:<Lock className="h-4 w-4"/>}
               Cerrar inscripciones ({registrations.length})
             </button>
             {registrations.length >= 2 && (
               <ConfirmButton
                 title="Iniciar torneo directo"
                 description={`Se generará el bracket con ${registrations.length} equipos inscritos y comenzará el torneo. Esta acción no se puede deshacer.`}
-                onConfirm={()=>run('start',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/start`).then(()=>{}))}
+                onConfirm={()=>start.mutate()}
                 trigger={
-                  <button disabled={loading==='start'}
+                  <button disabled={start.isPending}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-700 hover:bg-green-600
                       text-white text-sm font-semibold transition-all disabled:opacity-40">
-                    {loading==='start'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Play className="h-4 w-4"/>}
+                    {start.isPending?<RefreshCw className="h-4 w-4 animate-spin"/>:<Play className="h-4 w-4"/>}
                     Iniciar directo
                   </button>
                 }
@@ -233,24 +224,23 @@ function AdminPanel({ tournament, registrations, onRefresh }: {
           <ConfirmButton
             title="Iniciar torneo"
             description={`Se generará el bracket con ${checkedIn} equipos que hicieron check-in. Esta acción no se puede deshacer.`}
-            onConfirm={()=>run('start',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/start`).then(()=>{}))}
+            onConfirm={()=>start.mutate()}
             trigger={
-              <button disabled={loading==='start'||checkedIn<2}
+              <button disabled={start.isPending||checkedIn<2}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-700 hover:bg-green-600
                   text-white text-sm font-semibold transition-all disabled:opacity-40">
-                {loading==='start'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Play className="h-4 w-4"/>}
+                {start.isPending?<RefreshCw className="h-4 w-4 animate-spin"/>:<Play className="h-4 w-4"/>}
                 Iniciar torneo ({checkedIn}/{registrations.length} check-in)
               </button>
             }
           />
         )}
         {tournament.riotTournamentId && (
-          <button disabled={loading==='codes'}
-            onClick={()=>run('codes',()=>axiosInstance.post(`/api/tournaments/${tournament.id}/generate-codes`,{count:20})
-              .then(({data})=>{ toast.success(`${data.generated} códigos generados`, { description: `Pool disponible: ${data.poolSize}` }); }))}
+          <button disabled={codes.isPending}
+            onClick={()=>codes.mutate(20)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600
               text-white text-sm font-semibold transition-all disabled:opacity-40">
-            {loading==='codes'?<RefreshCw className="h-4 w-4 animate-spin"/>:<Zap className="h-4 w-4"/>}
+            {codes.isPending?<RefreshCw className="h-4 w-4 animate-spin"/>:<Zap className="h-4 w-4"/>}
             Generar códigos ({tournament.codesAvailable})
           </button>
         )}
@@ -434,27 +424,28 @@ function StatsTabView({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TournamentDetailsPage() {
   const { id } = useParams<{ id:string }>();
-  const [tournament, setTournament] = useState<Tournament|null>(null);
-  const [registrations, setRegistrations] = useState<Registration[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [reportingMatch, setReportingMatch] = useState<string|null>(null);
   const [tab, setTab]               = useState('');
+  const [tabInit, setTabInit]       = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
 
-  const fetchAll = useCallback(async () => {
-    try {
-      const [{ data:t }, { data:r }] = await Promise.all([
-        axiosInstance.get(`/api/tournaments/${id}`),
-        axiosInstance.get(`/api/tournaments/${id}/registrations`),
-      ]);
-      setTournament(t);
-      setRegistrations(r);
-      if (!tab) setTab(t.phase==='active'||t.phase==='complete' ? 'bracket' : 'equipos');
-    } catch {}
-    finally { setLoading(false); }
-  }, [id]);
+  // Cached reads (React Query): tournament + its registrations.
+  const tournamentQ   = useTournament(id);
+  const registrationsQ = useRegistrations(id);
+  const tournament = tournamentQ.data ?? null;
+  const registrations: Registration[] = registrationsQ.data ?? [];
+  const loading = tournamentQ.isPending;
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  // Mutations.
+  const activate = useActivateMatch(id ?? '');
+  const report   = useReportResult(id ?? '');
+  const reportingMatch = report.isPending ? (report.variables?.matchId ?? null) : null;
+
+  // Default tab once the tournament resolves (active/complete → bracket, else equipos).
+  useEffect(() => {
+    if (tabInit || !tournament) return;
+    setTab(tournament.phase==='active'||tournament.phase==='complete' ? 'bracket' : 'equipos');
+    setTabInit(true);
+  }, [tournament, tabInit]);
 
   useEffect(() => {
     if (loading || !headerRef.current) return;
@@ -464,30 +455,16 @@ export default function TournamentDetailsPage() {
     );
   }, [loading]);
 
-  const handleActivate = async (matchId:string) => {
+  const handleActivate = async (matchId:string): Promise<string|null> => {
     try {
-      const { data } = await axiosInstance.post(`/api/tournaments/${id}/matches/${matchId}/activate`);
-      await fetchAll(); return data.code as string|null;
-    } catch (err:any) {
-      toast.error('No se pudo activar el partido', { description: err.response?.data?.error || err.message });
-      return null;
+      return await activate.mutateAsync(matchId);
+    } catch {
+      return null; // error toast handled by the mutation
     }
   };
 
-  const handleResult = async (matchId:string, winner:string, score1:number, score2:number) => {
-    setReportingMatch(matchId);
-    try {
-      const { data } = await axiosInstance.post(`/api/tournaments/${id}/matches/${matchId}/result`, { winner, score1, score2 });
-      await fetchAll();
-      if (data.tournamentComplete) {
-        toast.success('🏆 ¡Torneo finalizado!', { description: `Campeón: ${data.champion}`, duration: 8000 });
-      } else {
-        toast.success('Resultado registrado', { description: `${winner} avanza` });
-      }
-    } catch (err:any) {
-      toast.error('No se pudo registrar el resultado', { description: err.response?.data?.error || err.message });
-    }
-    finally { setReportingMatch(null); }
+  const handleResult = (matchId:string, winner:string, score1:number, score2:number) => {
+    report.mutate({ matchId, winner, score1, score2 });
   };
 
   if (loading) return (
@@ -593,12 +570,12 @@ export default function TournamentDetailsPage() {
 
         {/* Check-in panel */}
         {tournament.phase === 'checkin' && (
-          <CheckinPanel tournamentId={tournament.id} onDone={fetchAll} />
+          <CheckinPanel tournamentId={tournament.id} />
         )}
 
         {/* Admin panel */}
         {(tournament.phase==='registration'||tournament.phase==='checkin'||tournament.phase==='active') && (
-          <AdminPanel tournament={tournament} registrations={registrations} onRefresh={fetchAll} />
+          <AdminPanel tournament={tournament} registrations={registrations} />
         )}
 
         {/* Tabs */}
