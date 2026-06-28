@@ -174,6 +174,7 @@ const Dashboard = () => {
   const [riotId, setRiotId] = useState("");
   const [platform, setPlatform] = useState("la1");
   const [linking, setLinking] = useState(false);
+  const [nextT, setNextT] = useState<any | null>(null);
 
   // ===== procesa payload OAuth (cuando vuelves de Google) =====
   useEffect(() => {
@@ -194,6 +195,17 @@ const Dashboard = () => {
       navigate("/login?error=oauth", { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ===== próximo torneo (reusa /api/tournaments) =====
+  useEffect(() => {
+    axiosInstance.get("/api/tournaments").then(({ data }) => {
+      const list: any[] = Array.isArray(data) ? data : [];
+      const upcoming = list
+        .filter((t) => t.phase === "registration" || t.phase === "checkin")
+        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+      setNextT(upcoming[0] ?? list.find((t) => t.phase === "active") ?? null);
+    }).catch(() => {});
   }, []);
 
   // ===== llamadas a API =====
@@ -670,9 +682,33 @@ const Dashboard = () => {
                   <Calendar size={15} /> Próximo Torneo
                 </span>
               </SectionTitle>
-              <p style={{ textAlign: "center", fontSize: 13.5, color: "rgba(255,255,255,0.45)", margin: "6px 0" }}>
-                Próximamente…
-              </p>
+              {nextT ? (
+                <div
+                  onClick={() => navigate(`/tournaments/${nextT.id}`)}
+                  style={{ cursor: "pointer", padding: "4px 0" }}
+                >
+                  <div style={{ fontFamily: FONT_COND, fontWeight: 700, fontSize: 18, color: "#fff", lineHeight: 1.1, marginBottom: 6 }}>
+                    {nextT.name}
+                  </div>
+                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: "rgba(255,255,255,0.6)" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <Calendar size={13} />
+                      {new Date(nextT.startDate).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
+                    </span>
+                    {nextT.prize ? <span style={{ color: C.gold }}>🏆 {nextT.prize}</span> : null}
+                  </div>
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: nextT.phase === "active" ? C.win : C.gold }}>
+                      {nextT.phase === "registration" ? "Inscripciones abiertas" : nextT.phase === "checkin" ? "Check-in" : "En curso"}
+                    </span>
+                    <span style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>Ver →</span>
+                  </div>
+                </div>
+              ) : (
+                <p style={{ textAlign: "center", fontSize: 13.5, color: "rgba(255,255,255,0.45)", margin: "6px 0" }}>
+                  No hay torneos próximos
+                </p>
+              )}
             </Panel>
           </div>
         </div>
