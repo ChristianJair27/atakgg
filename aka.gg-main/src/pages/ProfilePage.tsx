@@ -17,6 +17,7 @@ import { KataLoaderOverlay } from '@/components/KataLoader';
 import { motion } from 'framer-motion';
 import ChampionDanceSlot from '@/components/ChampionDanceSlot';
 import { ScrollVideoBg } from '@/components/ScrollVideoBg';
+import { Tip } from '@/components/ui/Tip';
 
 // ─── Brand tokens ───────────────────────────────────────────────────────────
 const C = {
@@ -678,14 +679,16 @@ export default function ProfilePage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.7)' }}>
                   Temporada 2026 <ChevronDown size={15} />
                 </div>
-                <button
-                  onClick={refresh}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = C.redHover)}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = C.red)}
-                >
-                  <RefreshCw size={15} /> Actualizar
-                </button>
+                <Tip label="Volver a cargar los datos del invocador">
+                  <button
+                    onClick={refresh}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = C.redHover)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = C.red)}
+                  >
+                    <RefreshCw size={15} /> Actualizar
+                  </button>
+                </Tip>
               </div>
             </div>
           </Panel>
@@ -854,19 +857,20 @@ function RecentGames({
         right={
           <div style={{ display: 'flex', gap: 6 }}>
             {chips.map((c) => (
-              <button
-                key={String(c.val)}
-                onClick={() => setFilter(c.val)}
-                style={{
-                  fontSize: 12, fontWeight: 500, padding: '4px 11px', borderRadius: 999, cursor: 'pointer',
-                  border: filter === c.val ? `1px solid ${C.red}` : '1px solid rgba(255,255,255,0.10)',
-                  background: filter === c.val ? 'rgba(225,36,46,0.18)' : 'transparent',
-                  color: filter === c.val ? C.redHover : 'rgba(255,255,255,0.55)',
-                  transition: 'color .16s, border-color .16s, background .16s',
-                }}
-              >
-                {c.label}
-              </button>
+              <Tip key={String(c.val)} label={`Filtrar por ${c.label}`}>
+                <button
+                  onClick={() => setFilter(c.val)}
+                  style={{
+                    fontSize: 12, fontWeight: 500, padding: '4px 11px', borderRadius: 999, cursor: 'pointer',
+                    border: filter === c.val ? `1px solid ${C.red}` : '1px solid rgba(255,255,255,0.10)',
+                    background: filter === c.val ? 'rgba(225,36,46,0.18)' : 'transparent',
+                    color: filter === c.val ? C.redHover : 'rgba(255,255,255,0.55)',
+                    transition: 'color .16s, border-color .16s, background .16s',
+                  }}
+                >
+                  {c.label}
+                </button>
+              </Tip>
             ))}
           </div>
         }
@@ -1004,13 +1008,17 @@ function MatchRowMini({ m, champByKey, puuid, region, continent, index = 0 }: {
 
       {/* KDA / CS / KP */}
       <div style={{ minWidth: 130 }}>
-        <div style={{ fontFamily: FONT_KDA, fontWeight: 700, fontSize: 15 }}>
-          {m.kills} / <span style={{ color: C.loss }}>{m.deaths}</span> / {m.assists}
-          <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginLeft: 6 }}>{kda} KDA</span>
-        </div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
-          {cs} CS ({csPerMin}/min){kp != null ? ` · KP ${kp}%` : ''}
-        </div>
+        <Tip label="Asesinatos / Muertes / Asistencias (KDA)">
+          <div style={{ fontFamily: FONT_KDA, fontWeight: 700, fontSize: 15 }}>
+            {m.kills} / <span style={{ color: C.loss }}>{m.deaths}</span> / {m.assists}
+            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginLeft: 6 }}>{kda} KDA</span>
+          </div>
+        </Tip>
+        <Tip label={`Súbditos por minuto${kp != null ? ' · Participación en asesinatos' : ''}`}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
+            {cs} CS ({csPerMin}/min){kp != null ? ` · KP ${kp}%` : ''}
+          </div>
+        </Tip>
       </div>
 
       <div style={{ flex: 1 }} />

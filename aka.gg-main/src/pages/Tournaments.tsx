@@ -1,16 +1,20 @@
 // src/pages/Tournaments.tsx — glass/space · GSAP · MySQL-backed
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { motion, AnimatePresence } from 'framer-motion';
-import axiosInstance from '@/lib/axios';
 import { TournamentRegisterModal } from '@/components/TournamentRegisterModal';
 import { TournamentCreateModal } from '@/components/TournamentCreateModal';
 import { ScrollVideoBg } from '@/components/ScrollVideoBg';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tip } from '@/components/ui/Tip';
+import { useTournaments } from '@/hooks/queries/tournaments';
+import { qk } from '@/hooks/queries/keys';
 import {
   Trophy, Calendar, Users, Plus, ArrowRight,
-  Zap, Shield, Clock, CheckCircle, RefreshCw,
+  Zap, Shield, Clock, CheckCircle,
 } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -179,6 +183,34 @@ function TournamentCard({
   );
 }
 
+// ─── Card skeleton (content-shaped, matches TournamentCard layout) ──────────────
+function TournamentCardSkeleton() {
+  return (
+    <div className="rounded-2xl overflow-hidden"
+      style={{
+        background:
+          'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)',
+        backdropFilter: 'blur(20px) saturate(120%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
+      }}>
+      <div className="p-6 space-y-4">
+        <Skeleton width={130} height={24} style={{ borderRadius: 999 }} />
+        <Skeleton width="70%" height={22} />
+        <Skeleton width="90%" height={14} />
+        <div className="grid grid-cols-3 gap-3 pt-1">
+          {[0, 1, 2].map(i => <Skeleton key={i} height={36} />)}
+        </div>
+        <Skeleton height={6} style={{ borderRadius: 999 }} />
+        <div className="flex gap-3 pt-1">
+          <Skeleton width={120} height={38} style={{ borderRadius: 12 }} />
+          <Skeleton width={120} height={38} style={{ borderRadius: 12 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Stats bar ────────────────────────────────────────────────────────────────
 function StatBar({ tournaments }: { tournaments: Tournament[] }) {
   const active = tournaments.filter(t => t.phase === 'active').length;
@@ -200,18 +232,20 @@ function StatBar({ tournaments }: { tournaments: Tournament[] }) {
         { label:'Inscripción', value: open,               color:'text-green-400' },
         { label:'Finalizados', value: done,               color:'text-gray-400' },
       ].map(s => (
-        <div key={s.label}
-          className="rounded-2xl p-5 text-center"
-          style={{
-            background:
-              'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)',
-            backdropFilter: 'blur(20px) saturate(120%)',
-            WebkitBackdropFilter: 'blur(20px) saturate(120%)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
-          }}>
-          <div className={`text-3xl font-black ${s.color}`}>{s.value}</div>
-          <div className="text-xs text-gray-600 uppercase tracking-widest mt-1">{s.label}</div>
-        </div>
+        <Tip key={s.label} label={`${s.value} ${s.label.toLowerCase()}`}>
+          <div
+            className="rounded-2xl p-5 text-center"
+            style={{
+              background:
+                'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 70%), rgba(13,13,17,0.30)',
+              backdropFilter: 'blur(20px) saturate(120%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 12px 44px -30px rgba(0,0,0,.6)',
+            }}>
+            <div className={`text-3xl font-black ${s.color}`}>{s.value}</div>
+            <div className="text-xs text-gray-600 uppercase tracking-widest mt-1">{s.label}</div>
+          </div>
+        </Tip>
       ))}
     </div>
   );
@@ -219,8 +253,6 @@ function StatBar({ tournaments }: { tournaments: Tournament[] }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function TournamentsPage() {
-  const [tournaments,        setTournaments]        = useState<Tournament[]>([]);
-  const [loading,            setLoading]            = useState(true);
   const [filter,             setFilter]             = useState<string>('todos');
   const [registerOpen,       setRegisterOpen]       = useState(false);
   const [createOpen,         setCreateOpen]         = useState(false);
@@ -228,15 +260,10 @@ export default function TournamentsPage() {
   const [mousePos,           setMousePos]           = useState({ x:0, y:0 });
   const headerRef = useRef<HTMLDivElement>(null);
 
-  const fetchTournaments = async () => {
-    try {
-      const { data } = await axiosInstance.get('/api/tournaments');
-      setTournaments(data);
-    } catch { setTournaments([]); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetchTournaments(); }, []);
+  const qc = useQueryClient();
+  const { data: tournaments = [], isLoading: loading } = useTournaments();
+  // After a register/create mutation, refetch the cached list.
+  const refetchTournaments = () => qc.invalidateQueries({ queryKey: qk.tournaments() });
 
   useEffect(() => {
     if (loading || !headerRef.current) return;
@@ -252,15 +279,6 @@ export default function TournamentsPage() {
   );
 
   const isAuth = !!localStorage.getItem('access_token');
-
-  if (loading) return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <RefreshCw className="h-8 w-8 text-red-500 animate-spin" />
-        <p className="text-gray-400 text-sm animate-pulse">Cargando torneos...</p>
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen text-white"
@@ -312,24 +330,30 @@ export default function TournamentsPage() {
         {/* Filter pills */}
         <div className="flex flex-wrap gap-2 justify-center mb-10">
           {FILTERS.map(f => (
-            <button key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 ${
-                filter === f.key
-                  ? 'bg-foreground text-background'
-                  : 'border border-white/[0.08] bg-white/[0.03] text-muted-foreground hover:border-white/20 hover:text-white'
-              }`}>
-              {f.label}
-              <span className={`ml-1.5 text-xs ${filter === f.key ? 'text-background/60' : 'text-white/20'}`}>
-                {f.key === 'todos' ? tournaments.length : tournaments.filter(t => t.phase === f.key).length}
-              </span>
-            </button>
+            <Tip key={f.key} label={`Filtrar: ${f.label}`}>
+              <button
+                onClick={() => setFilter(f.key)}
+                className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                  filter === f.key
+                    ? 'bg-foreground text-background'
+                    : 'border border-white/[0.08] bg-white/[0.03] text-muted-foreground hover:border-white/20 hover:text-white'
+                }`}>
+                {f.label}
+                <span className={`ml-1.5 text-xs ${filter === f.key ? 'text-background/60' : 'text-white/20'}`}>
+                  {f.key === 'todos' ? tournaments.length : tournaments.filter(t => t.phase === f.key).length}
+                </span>
+              </button>
+            </Tip>
           ))}
         </div>
 
         {/* Grid */}
         <AnimatePresence mode="wait">
-          {filtered.length > 0 ? (
+          {loading ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {Array.from({ length: 4 }).map((_, i) => <TournamentCardSkeleton key={i} />)}
+            </div>
+          ) : filtered.length > 0 ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               {filtered.map((t, i) => (
                 <TournamentCard key={t.id} t={t} index={i}
@@ -360,13 +384,13 @@ export default function TournamentsPage() {
           tournamentName={selectedTournament.name}
           open={registerOpen}
           onOpenChange={setRegisterOpen}
-          onRegistered={fetchTournaments}
+          onRegistered={refetchTournaments}
         />
       )}
       <TournamentCreateModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={fetchTournaments}
+        onCreated={refetchTournaments}
       />
     </div>
   );
