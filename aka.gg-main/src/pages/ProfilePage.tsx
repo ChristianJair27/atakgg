@@ -221,7 +221,7 @@ function SectionTitle({ children, right }: { children: React.ReactNode; right?: 
 function Bar({ value, color }: { value: number; color: string }) {
   return (
     <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden' }}>
-      <div style={{ height: '100%', width: `${Math.min(Math.max(value, 0), 100)}%`, background: color, borderRadius: 999, transition: 'width .6s' }} />
+      <div style={{ height: '100%', width: '100%', background: color, borderRadius: 999, transformOrigin: 'left', transform: `scaleX(${Math.min(Math.max(value, 0), 100) / 100})`, transition: 'transform .6s' }} />
     </div>
   );
 }

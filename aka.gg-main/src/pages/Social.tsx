@@ -51,8 +51,9 @@ function getUser(): { name: string; id?: number } | null {
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 function Avatar({ name, size=9 }: { name: string; size?: number }) {
-  const colors = ['from-red-700 to-red-900','from-purple-700 to-purple-900',
-    'from-blue-700 to-blue-900','from-green-700 to-green-900','from-orange-700 to-orange-900'];
+  // ATAK palette — red family + warm neutrals + gold (no purple/blue/cyan AI-tells)
+  const colors = ['from-red-700 to-red-900','from-rose-800 to-red-950',
+    'from-zinc-700 to-zinc-900','from-stone-700 to-stone-900','from-amber-700 to-amber-900'];
   const color = colors[name.charCodeAt(0) % colors.length];
   return (
     <div className={`w-${size} h-${size} rounded-xl bg-gradient-to-br ${color}

@@ -71,7 +71,7 @@ function ReportForm({ match, onReport, loading }: {
         {[match.team1, match.team2].map(team => (
           <button key={team} onClick={() => setWinner(team!)}
             className={`text-xs px-2 py-1 rounded-lg border transition truncate ${
-              winner === team ? 'bg-green-600/80 border-green-500 text-white' : 'border-white/10 text-gray-300 hover:border-green-600/60'
+              winner === team ? 'bg-green-600/80 border-green-500 text-white' : 'border-white/10 text-gray-200 hover:border-green-600/60'
             }`}>
             {team} gana
           </button>

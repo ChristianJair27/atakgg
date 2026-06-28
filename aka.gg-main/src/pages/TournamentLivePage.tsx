@@ -291,7 +291,7 @@ function PostGameStats({ stats, version }: { stats: MatchStats; version: string 
       </div>
 
       {/* Blue team */}
-      <div className={`border-l-4 ${blueWon ? 'border-blue-400' : 'border-blue-900/50'}`}>
+      <div className={`rounded-lg ${blueWon ? 'bg-blue-500/[0.05] ring-1 ring-inset ring-blue-400/25' : 'ring-1 ring-inset ring-blue-400/10'}`}>
         <div className="px-3 py-1.5 flex items-center gap-2">
           <Shield className="h-3 w-3 text-blue-400" />
           <span className={`text-[10px] font-black uppercase tracking-wider ${blueWon ? 'text-blue-300' : 'text-blue-900'}`}>
@@ -305,7 +305,7 @@ function PostGameStats({ stats, version }: { stats: MatchStats; version: string 
       <div className="h-px bg-white/[0.04] mx-3" />
 
       {/* Red team */}
-      <div className={`border-l-4 ${!blueWon ? 'border-red-400' : 'border-red-900/50'}`}>
+      <div className={`rounded-lg ${!blueWon ? 'bg-red-500/[0.05] ring-1 ring-inset ring-red-400/25' : 'ring-1 ring-inset ring-red-400/10'}`}>
         <div className="px-3 py-1.5 flex items-center gap-2">
           <Swords className="h-3 w-3 text-red-400" />
           <span className={`text-[10px] font-black uppercase tracking-wider ${!blueWon ? 'text-red-300' : 'text-red-900'}`}>
