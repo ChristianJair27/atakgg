@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="atak-loader.css">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{width:380px;height:520px;overflow:hidden;user-select:none}
+html,body{width:400px;height:560px;overflow:hidden;user-select:none}
 
 :root{
   --gold:    #c89b3c;
@@ -31,11 +31,10 @@ body{
   font-family:var(--body);
   font-weight:400;
   color:#fff;
-  /* Translucent cinematic veil — the game stays visible behind the panels */
   background:
-    radial-gradient(ellipse 90% 45% at 50% -8%, rgba(255,255,255,.05), transparent 60%),
-    radial-gradient(ellipse 70% 40% at 85% 108%, rgba(200,155,60,.05), transparent 55%),
-    linear-gradient(175deg, rgba(2,3,6,.30) 0%, rgba(2,3,6,.42) 100%);
+    radial-gradient(ellipse 90% 45% at 50% -8%, rgba(255,255,255,.04), transparent 60%),
+    radial-gradient(ellipse 70% 40% at 85% 108%, rgba(200,155,60,.04), transparent 55%),
+    #080a0e;
 }
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px}
@@ -249,6 +248,8 @@ body{
 }
 .prow-kda .kk{color:var(--green)}.prow-kda .dd{color:var(--red)}.prow-kda .aa{color:var(--blue)}
 .prow-kda .cs-s{font-size:6.5px;color:rgba(255,255,255,.22)}
+/* ── Rank badge (inline in prow-sub) ── */
+.rank-badge{font-size:6.5px;font-weight:700;letter-spacing:.04em;flex-shrink:0}
 </style>
 </head>
 <body>

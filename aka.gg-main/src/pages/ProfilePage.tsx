@@ -4,7 +4,7 @@
 // the useChampions hook, and the DDragon icon helpers in src/lib/dataDragon.ts.
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useChampions } from '@/hooks/use-ddragon';
 import {
   useResolveRiotId,
@@ -20,6 +20,8 @@ import {
   rankEmblem,
   spellIcon,
   fmtNumber,
+  keystoneIcon,
+  runePathIcon,
 } from '@/lib/dataDragon';
 import { RefreshCw, Star, Search, ChevronDown } from 'lucide-react';
 import { KataLoaderOverlay } from '@/components/KataLoader';
@@ -35,9 +37,10 @@ const C = {
   border: 'rgba(255,255,255,0.07)',
   red: '#e1242e',
   redHover: '#ff5a64',
-  win: '#2fbf8a',
+  win: '#0bc4e3',    // ATAK teal for wins (not blue like OP.GG, distinct brand)
   loss: '#ff5a64',
   gold: '#c8aa6e',
+  teal: '#0bc4e3',
 };
 const FONT_BODY = "'Saira', system-ui, sans-serif";
 const FONT_COND = "'Saira Condensed', 'Saira', sans-serif";
@@ -393,6 +396,22 @@ export default function ProfilePage() {
   const bestPlayersQ = useBestPlayers(platform, puuid, 15);
   const bestPlayers = bestPlayersQ.data ?? null;
 
+  // OP.GG regional rank + champion stats (independent of PUUID — uses Riot ID directly)
+  const opggQ = useQuery({
+    queryKey: ['opgg', 'profile', platform, gameName, tagLine],
+    queryFn: async () => {
+      const res = await fetch(
+        `http://localhost:4000/api/opgg/summoner-full?game_name=${encodeURIComponent(gameName)}&tag_line=${encodeURIComponent(tagLine)}&region=${encodeURIComponent(platform)}`
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.ok ? data : null;
+    },
+    enabled: !!gameName && !!tagLine,
+    staleTime: 5 * 60 * 1000,
+  });
+  const opggData = opggQ.data ?? null;
+
   const loadMore = () => setCount((n) => n + 10);
 
   // "Actualizar" — invalidate every stats query for this invocador (resolve
@@ -428,20 +447,19 @@ export default function ProfilePage() {
     return matches.filter((m) => m.queueId === filter);
   }, [matches, filter]);
 
-  const last10 = useMemo(() => filtered.slice(0, 10), [filtered]);
   const recap = useMemo(() => {
-    if (!last10.length) return null;
-    const wins = last10.filter((m) => m.win).length;
-    const k = last10.reduce((s, m) => s + (m.kills || 0), 0);
-    const d = last10.reduce((s, m) => s + (m.deaths || 0), 0);
-    const a = last10.reduce((s, m) => s + (m.assists || 0), 0);
+    if (!filtered.length) return null;
+    const wins = filtered.filter((m) => m.win).length;
+    const k = filtered.reduce((s, m) => s + (m.kills || 0), 0);
+    const d = filtered.reduce((s, m) => s + (m.deaths || 0), 0);
+    const a = filtered.reduce((s, m) => s + (m.assists || 0), 0);
     return {
-      n: last10.length, wins, losses: last10.length - wins,
-      wr: Math.round((wins / last10.length) * 100),
+      n: filtered.length, wins, losses: filtered.length - wins,
+      wr: Math.round((wins / filtered.length) * 100),
       kda: d === 0 ? (k + a).toFixed(2) : ((k + a) / d).toFixed(2),
-      k: (k / last10.length).toFixed(1), d: (d / last10.length).toFixed(1), a: (a / last10.length).toFixed(1),
+      k: (k / filtered.length).toFixed(1), d: (d / filtered.length).toFixed(1), a: (a / filtered.length).toFixed(1),
     };
-  }, [last10]);
+  }, [filtered]);
 
   // Role performance (from match history; Solo/Flex/normals)
   const rolePerf = useMemo(() => {
@@ -481,22 +499,56 @@ export default function ProfilePage() {
       .slice(0, 6);
   }, [matches]);
 
-  // Player tags (derived from stats; no dedicated endpoint)
+  // Player tags — use OP.GG full-season data as primary source, recent matches as fallback
   const tags = useMemo(() => {
     const t: string[] = [];
-    if (recap) {
-      if (recap.wr >= 60) t.push('En racha');
-      if (recap.wr <= 35) t.push('En slump');
-      if (Number(recap.kda) >= 4) t.push('KDA alto');
-      if (Number(recap.d) <= 4) t.push('Juega seguro');
+    if (opggData?.is_hot_streak) t.push('Racha ganadora 🔥');
+    if (opggData?.is_veteran) t.push('Veterano');
+    if (opggData?.is_fresh_blood) t.push('Recién llegado');
+
+    // WR tag: prefer season WR from OP.GG ranked stats
+    const seasonWr = (opggData?.rank as any)?.win_rate ?? null;
+    const wrSrc = seasonWr ?? (recap ? recap.wr : null);
+    if (wrSrc != null) {
+      if (wrSrc >= 56) t.push('En racha');
+      else if (wrSrc <= 42) t.push('En slump');
     }
-    const best = champRows[0];
-    if (best && champByKey?.[String(best.id)]) t.push(`Main ${champByKey[String(best.id)].name}`);
+
+    // KDA / deaths tag: derive from season champion totals (career totals ÷ play = per-game avg)
+    const champStats = opggData?.champion_stats as any[] | undefined;
+    if (champStats?.length) {
+      const totalPlay   = champStats.reduce((s, c) => s + (c.play   || 0), 0);
+      const totalKills  = champStats.reduce((s, c) => s + (c.kill   || 0), 0);
+      const totalDeaths = champStats.reduce((s, c) => s + (c.death  || 0), 0);
+      const totalAssist = champStats.reduce((s, c) => s + (c.assist || 0), 0);
+      if (totalPlay > 0 && totalDeaths > 0) {
+        const seasonKDA    = (totalKills + totalAssist) / totalDeaths;
+        const avgDeathsPG  = totalDeaths / totalPlay;
+        if (seasonKDA   >= 4) t.push('KDA alto');
+        if (avgDeathsPG <  4) t.push('Juega seguro');
+      }
+    } else if (recap) {
+      if (Number(recap.kda) >= 4) t.push('KDA alto');
+      if (Number(recap.d)   <= 4) t.push('Juega seguro');
+    }
+
+    // Main champion from OP.GG (most played this season)
+    const opggTop = champStats?.length
+      ? [...champStats].sort((a, b) => b.play - a.play)[0]
+      : null;
+    if (opggTop?.champion_name) {
+      const displayName = opggTop.champion_name.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
+      t.push(`Main ${displayName}`);
+    } else {
+      const best = champRows[0];
+      if (best && champByKey?.[String(best.id)]) t.push(`Main ${champByKey[String(best.id)].name}`);
+    }
+
     const topRole = (Object.entries(rolePerf) as [Role, any][]).sort((a, b) => b[1].games - a[1].games)[0];
     if (topRole && topRole[1].games > 0) t.push(topRole[0]);
     if (soloRank) t.push(`${soloRank.tier[0]}${soloRank.tier.slice(1).toLowerCase()} ${soloRank.rank}`);
     return t.length ? t : ['Sin datos suficientes'];
-  }, [recap, champRows, rolePerf, soloRank, champByKey]);
+  }, [recap, champRows, rolePerf, soloRank, champByKey, opggData]);
 
   const profileIconUrl = summary?.summoner?.profileIconId != null ? dd.profileIcon(summary.summoner.profileIconId) : '';
 
@@ -642,6 +694,7 @@ export default function ProfilePage() {
                 solo={soloRank} flex={flexRank}
                 loading={summaryLoading && !summary}
                 leagueRank={leagueRank}
+                opggData={opggData}
               />
               <RecentGames
                 matches={filtered} loading={matchesLoading && !matches.length}
@@ -669,7 +722,7 @@ export default function ProfilePage() {
                 champByKey={champByKey} region={platform}
               />
               <RolePerformance perf={rolePerf} loading={matchesLoading && !matches.length} />
-              <ChampionsTable rows={champRows} champByKey={champByKey} loading={matchesLoading && !matches.length} bestPlayers={bestPlayers} region={platform} />
+              <ChampionsTable rows={champRows} champByKey={champByKey} loading={matchesLoading && !matches.length} bestPlayers={bestPlayers} region={platform} opggChampStats={opggData?.champion_stats ?? null} />
             </div>
           </div>
         </div>
@@ -679,10 +732,18 @@ export default function ProfilePage() {
 }
 
 // ─── Personal score (featured Solo/Dúo) ─────────────────────────────────────
-function PersonalScore({ solo, flex, loading, leagueRank }: {
+function PersonalScore({ solo, flex, loading, leagueRank, opggData }: {
   solo: RankEntry | null; flex: RankEntry | null; loading: boolean;
   leagueRank: { regionalRank: number | null; topPercent: number | null } | null;
+  opggData?: any;
 }) {
+  const ladderRank = opggData?.rank?.ladder_rank ?? null;
+  const ladderTotal = opggData?.rank?.ladder_total ?? null;
+  const seasonPlay = opggData?.season_play ?? 0;
+  const seasonWR = opggData?.season_win_rate ?? null;
+  const isHotStreak = opggData?.is_hot_streak ?? false;
+  const isVeteran = opggData?.is_veteran ?? false;
+
   return (
     <Panel style={{ padding: 26 }}>
       <SectionTitle>Puntuación personal</SectionTitle>
@@ -697,6 +758,40 @@ function PersonalScore({ solo, flex, loading, leagueRank }: {
         <FeaturedRank rank={solo} leagueRank={leagueRank} />
       ) : (
         <Unranked label="Solo/Dúo sin clasificar" />
+      )}
+
+      {/* OP.GG regional position card */}
+      {ladderRank != null && (
+        <div style={{ marginTop: 16, padding: '10px 14px', background: 'rgba(11,196,227,0.04)', border: '1px solid rgba(11,196,227,0.12)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(11,196,227,0.5)', fontWeight: 700, marginBottom: 2 }}>Posición regional</div>
+            <div style={{ fontFamily: FONT_COND, fontWeight: 800, fontSize: 20, color: '#0bc4e3', lineHeight: 1 }}>
+              #{ladderRank.toLocaleString()}
+              {ladderTotal != null && (
+                <span style={{ fontFamily: FONT_BODY, fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.35)', marginLeft: 5 }}>
+                  de {(ladderTotal / 1_000_000).toFixed(1)}M
+                </span>
+              )}
+            </div>
+          </div>
+          {seasonPlay > 0 && (
+            <div style={{ borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: 14 }}>
+              <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 2 }}>Partidas temporada</div>
+              <div style={{ fontFamily: FONT_COND, fontWeight: 700, fontSize: 16 }}>
+                {seasonPlay}
+                {seasonWR != null && (
+                  <span style={{ fontSize: 13, fontWeight: 700, marginLeft: 8, color: seasonWR >= 50 ? C.win : C.loss }}>{seasonWR}%</span>
+                )}
+              </div>
+            </div>
+          )}
+          {(isHotStreak || isVeteran) && (
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+              {isHotStreak && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171' }}>Racha ganadora</span>}
+              {isVeteran && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: 'rgba(200,155,60,0.1)', border: '1px solid rgba(200,155,60,0.2)', color: C.gold }}>Veterano</span>}
+            </div>
+          )}
+        </div>
       )}
 
       {/* 2-up: Flex + enemy avg — open sections divided by a hairline (no cards) */}
@@ -722,23 +817,43 @@ function FeaturedRank({ rank, leagueRank }: {
   const total = wins + losses;
   const wr = total ? Math.round((wins / total) * 100) : 0;
   const tierName = rank.tier ? rank.tier[0] + rank.tier.slice(1).toLowerCase() : '';
+  const tierColor: Record<string, string> = {
+    IRON: '#6b6b6b', BRONZE: '#ad7c52', SILVER: '#9eaab8', GOLD: '#c8aa6e',
+    PLATINUM: '#5bbfa7', EMERALD: '#4cad6d', DIAMOND: '#6aa5d4',
+    MASTER: '#9d4dc4', GRANDMASTER: '#e84d4d', CHALLENGER: '#00eeff',
+  };
+  const color = tierColor[rank.tier?.toUpperCase?.()] ?? C.gold;
   return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-      <img src={rankEmblem(rank.tier)} alt={rank.tier} style={{ width: 88, height: 88, objectFit: 'contain', filter: `drop-shadow(0 0 14px ${C.gold}55)` }} />
+    <div style={{ display: 'flex', gap: 22, alignItems: 'center' }}>
+      {/* Rank emblem with glow ring */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <div style={{
+          position: 'absolute', inset: -6, borderRadius: '50%',
+          background: `radial-gradient(circle, ${color}30 0%, transparent 70%)`,
+          filter: 'blur(12px)',
+        }} />
+        <img src={rankEmblem(rank.tier)} alt={rank.tier}
+          style={{ width: 120, height: 120, objectFit: 'contain', position: 'relative',
+            filter: `drop-shadow(0 0 18px ${color}70)` }} />
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: FONT_COND, fontWeight: 800, fontSize: 24, color: C.gold, lineHeight: 1 }}>
+        <div style={{ fontFamily: FONT_COND, fontWeight: 900, fontSize: 30, color, lineHeight: 1, letterSpacing: '-0.01em' }}>
           {tierName} {rank.rank}
         </div>
-        <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
-          <span>Rank regional: {leagueRank?.regionalRank != null ? `#${fmtNumber(leagueRank.regionalRank)}` : '—'}</span>
-          <span>Top %: {leagueRank?.topPercent != null ? `${leagueRank.topPercent}%` : '—'}</span>
+        <div style={{ fontFamily: FONT_COND, fontWeight: 800, fontSize: 22, color: '#fff', marginTop: 4 }}>{rank.lp} LP</div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 5, fontSize: 12, color: 'rgba(255,255,255,0.45)', flexWrap: 'wrap' }}>
+          {leagueRank?.regionalRank != null && (
+            <span>Rank regional: <b style={{ color: 'rgba(255,255,255,0.7)' }}>#{fmtNumber(leagueRank.regionalRank)}</b></span>
+          )}
+          {leagueRank?.topPercent != null && (
+            <span>Top %: <b style={{ color: 'rgba(255,255,255,0.7)' }}>{leagueRank.topPercent}%</b></span>
+          )}
         </div>
-        <div style={{ fontFamily: FONT_COND, fontWeight: 700, fontSize: 16, color: '#fff', marginTop: 6 }}>{rank.lp} LP</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-          <span style={{ fontSize: 12, color: C.win, fontWeight: 700 }}>{wins}V</span>
-          <span style={{ fontSize: 12, color: C.loss, fontWeight: 700 }}>{losses}D</span>
-          <div style={{ flex: 1 }}><Bar value={wr} color={wr >= 50 ? C.win : C.loss} /></div>
-          <span style={{ fontSize: 13, fontWeight: 800, fontFamily: FONT_COND, color: wr >= 50 ? C.win : C.loss }}>{wr}%</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+          <span style={{ fontFamily: FONT_COND, fontSize: 14, color: C.win, fontWeight: 700 }}>{wins}V</span>
+          <span style={{ fontFamily: FONT_COND, fontSize: 14, color: C.loss, fontWeight: 700 }}>{losses}D</span>
+          <div style={{ flex: 1, maxWidth: 200 }}><Bar value={wr} color={wr >= 50 ? C.win : C.loss} /></div>
+          <span style={{ fontSize: 15, fontWeight: 800, fontFamily: FONT_COND, color: wr >= 50 ? C.win : C.loss }}>{wr}%</span>
         </div>
       </div>
     </div>
@@ -746,17 +861,32 @@ function FeaturedRank({ rank, leagueRank }: {
 }
 
 function MiniRank({ label, rank, loading }: { label: string; rank: RankEntry | null; loading: boolean }) {
+  const tierColor: Record<string, string> = {
+    IRON: '#6b6b6b', BRONZE: '#ad7c52', SILVER: '#9eaab8', GOLD: '#c8aa6e',
+    PLATINUM: '#5bbfa7', EMERALD: '#4cad6d', DIAMOND: '#6aa5d4',
+    MASTER: '#9d4dc4', GRANDMASTER: '#e84d4d', CHALLENGER: '#00eeff',
+  };
+  const color = rank ? (tierColor[rank.tier?.toUpperCase?.()] ?? C.gold) : C.gold;
   return (
     <div>
-      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 500, color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 500, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>{label}</div>
       {loading ? <Skeleton h={18} w="70%" /> : rank ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img src={rankEmblem(rank.tier)} alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{
+              position: 'absolute', inset: -8,
+              background: `radial-gradient(circle, ${color}28 0%, transparent 70%)`,
+              filter: 'blur(8px)',
+            }} />
+            <img src={rankEmblem(rank.tier)} alt={rank.tier}
+              style={{ width: 72, height: 72, objectFit: 'contain', position: 'relative',
+                filter: `drop-shadow(0 0 12px ${color}70)` }} />
+          </div>
           <div>
-            <div style={{ fontFamily: FONT_COND, fontWeight: 700, fontSize: 15, color: C.gold }}>
+            <div style={{ fontFamily: FONT_COND, fontWeight: 800, fontSize: 20, color }}>
               {rank.tier[0] + rank.tier.slice(1).toLowerCase()} {rank.rank}
             </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{rank.lp} LP</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{rank.lp} LP</div>
           </div>
         </div>
       ) : (
@@ -911,87 +1041,186 @@ function MatchRowMini({ m, champByKey, puuid, region, continent, index = 0 }: {
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.4, delay: Math.min(index, 8) * 0.045, ease: [0.22, 1, 0.36, 1] }}
       style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '14px 14px 14px 18px',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '16px 14px 16px 18px',
         boxShadow: `inset 4px 0 0 ${win ? C.win : C.loss}`,
         borderBottom: HAIRLINE,
-        background: 'transparent',
+        background: win ? 'rgba(11,196,227,0.025)' : 'rgba(255,90,100,0.025)',
         flexWrap: 'wrap', cursor: 'pointer', transition: 'background .18s',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+        e.currentTarget.style.background = win ? 'rgba(11,196,227,0.06)' : 'rgba(255,90,100,0.06)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.background = win ? 'rgba(11,196,227,0.025)' : 'rgba(255,90,100,0.025)';
       }}
     >
-      {/* Champ + spells */}
+      {/* Champ icon + spells */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <img src={c?.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} style={{ width: 46, height: 46, borderRadius: 8, objectFit: 'cover', border: `1px solid ${C.border}` }} />
+        <div style={{ position: 'relative' }}>
+          <img src={c?.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+            style={{ width: 58, height: 58, borderRadius: 10, objectFit: 'cover',
+              border: `2px solid ${win ? C.win + '60' : C.loss + '50'}` }} />
+          <div style={{ position: 'absolute', bottom: 2, right: 2, background: 'rgba(0,0,0,0.75)',
+            borderRadius: 4, padding: '1px 4px', fontSize: 10, fontFamily: FONT_COND, fontWeight: 700, color: '#fff' }}>
+            {m.champLevel || ''}
+          </div>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {spells.slice(0, 2).map((id, i) => {
             const url = spellIcon(id);
             return url
-              ? <img key={i} src={url} alt="" style={{ width: 20, height: 20, borderRadius: 4 }} />
-              : <div key={i} style={{ width: 20, height: 20, borderRadius: 4, background: 'rgba(255,255,255,0.06)' }} />;
+              ? <img key={i} src={url} alt="" style={{ width: 22, height: 22, borderRadius: 4 }} />
+              : <div key={i} style={{ width: 22, height: 22, borderRadius: 4, background: 'rgba(255,255,255,0.06)' }} />;
           })}
         </div>
       </div>
 
       {/* Result + queue */}
-      <div style={{ width: 96, flexShrink: 0 }}>
-        <div style={{ fontFamily: FONT_COND, fontWeight: 800, fontSize: 14, color: win ? C.win : C.loss, textTransform: 'uppercase' }}>
+      <div style={{ width: 90, flexShrink: 0 }}>
+        <div style={{
+          display: 'inline-block', fontFamily: FONT_COND, fontWeight: 800, fontSize: 12,
+          color: win ? C.win : C.loss, textTransform: 'uppercase', letterSpacing: '0.06em',
+          background: win ? 'rgba(11,196,227,0.10)' : 'rgba(255,90,100,0.10)',
+          border: `1px solid ${win ? C.win + '40' : C.loss + '40'}`,
+          borderRadius: 5, padding: '2px 8px', marginBottom: 4,
+        }}>
           {win ? 'Victoria' : 'Derrota'}
         </div>
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{queueName(m.queueId, m.gameMode)}</div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{timeAgo(m.gameStartTimestamp)}</div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.28)' }}>{timeAgo(m.gameStartTimestamp)}</div>
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 1 }}>
+          {Math.floor((m.gameDuration || 0) / 60)}m{String(((m.gameDuration || 0) % 60)).padStart(2, '0')}s
+        </div>
       </div>
 
       {/* KDA / CS / KP */}
-      <div style={{ minWidth: 130 }}>
-        <Tip label="Asesinatos / Muertes / Asistencias (KDA)">
-          <div style={{ fontFamily: FONT_KDA, fontWeight: 700, fontSize: 15 }}>
-            {m.kills} / <span style={{ color: C.loss }}>{m.deaths}</span> / {m.assists}
-            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginLeft: 6 }}>{kda} KDA</span>
+      <div style={{ minWidth: 126 }}>
+        <Tip label="Asesinatos / Muertes / Asistencias (KDA)" asChild={false}>
+          <div>
+            <div style={{ fontFamily: FONT_KDA, fontWeight: 700, fontSize: 16 }}>
+              {m.kills} / <span style={{ color: C.loss }}>{m.deaths}</span> / {m.assists}
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>
+              <span style={{ fontWeight: 700, color: Number(kda) >= 3 ? C.win : Number(kda) >= 2 ? '#fff' : 'rgba(255,255,255,0.55)' }}>{kda} KDA</span>
+            </div>
           </div>
         </Tip>
         <Tip label={`Súbditos por minuto${kp != null ? ' · Participación en asesinatos' : ''}`}>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 3 }}>
             {cs} CS ({csPerMin}/min){kp != null ? ` · KP ${kp}%` : ''}
           </div>
         </Tip>
       </div>
 
+      {/* Runes — keystone + secondary path */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        {m.perks?.keystoneId ? (
+          <Tip label={`Keystone: ${m.perks.keystoneId}`} asChild={false}>
+            <div style={{ position: 'relative' }}>
+              <img
+                src={keystoneIcon(m.perks.keystoneId)} alt=""
+                onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
+                style={{ width: 34, height: 34, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.5)', objectFit: 'contain',
+                  border: `1px solid ${win ? 'rgba(11,196,227,0.25)' : 'rgba(255,90,100,0.2)'}` }}
+              />
+              {m.perks?.secondaryStyleId ? (
+                <img
+                  src={runePathIcon(m.perks.secondaryStyleId)} alt=""
+                  onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
+                  style={{ position: 'absolute', bottom: -4, right: -4, width: 16, height: 16,
+                    borderRadius: '50%', objectFit: 'contain', background: 'rgba(10,10,14,0.85)',
+                    border: '1px solid rgba(255,255,255,0.15)' }}
+                />
+              ) : null}
+            </div>
+          </Tip>
+        ) : (
+          <div style={{ width: 34, height: 34 }} />
+        )}
+      </div>
+
       <div style={{ flex: 1 }} />
 
-      {/* Team comp mini-grid (5v5) */}
+      {/* Items — 3×2 grid + trinket */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+        {/* Row 1: items 0-2 */}
+        <div style={{ display: 'flex', gap: 2 }}>
+          {(m.items || []).slice(0, 3).map((id: number, i: number) => (
+            id > 0 ? (
+              <img key={i} src={dd.item(id)} alt="" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+                style={{ width: 28, height: 28, borderRadius: 5, border: '1px solid rgba(255,255,255,0.10)', objectFit: 'cover', flexShrink: 0 }}
+              />
+            ) : (
+              <div key={i} style={{ width: 28, height: 28, borderRadius: 5, background: 'rgba(255,255,255,0.04)', flexShrink: 0 }} />
+            )
+          ))}
+        </div>
+        {/* Row 2: items 3-5 + trinket */}
+        <div style={{ display: 'flex', gap: 2 }}>
+          {[...(m.items || []).slice(3, 6), m.trinket ?? 0].map((id: number, i: number) => (
+            id > 0 ? (
+              <img key={i} src={dd.item(id)} alt="" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }}
+                style={{ width: 28, height: 28, borderRadius: 5,
+                  border: `1px solid ${i === 3 ? 'rgba(200,155,60,0.35)' : 'rgba(255,255,255,0.10)'}`,
+                  objectFit: 'cover', flexShrink: 0,
+                  opacity: i === 3 ? 0.7 : 1 }}
+              />
+            ) : (
+              <div key={i} style={{ width: 28, height: 28, borderRadius: 5, background: 'rgba(255,255,255,0.04)', flexShrink: 0 }} />
+            )
+          ))}
+        </div>
+        {/* Arena augments row (only when present) */}
+        {(m.playerAugments as number[] | undefined)?.length ? (
+          <div style={{ display: 'flex', gap: 2 }}>
+            {(m.playerAugments as number[]).map((id, i) => (
+              <div key={i} title={`Augment ${id}`}
+                style={{ width: 28, height: 14, borderRadius: 3, background: 'rgba(200,155,60,0.15)',
+                  border: '1px solid rgba(200,155,60,0.3)', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', fontSize: 7, color: C.gold, fontWeight: 800 }}>
+                A{i + 1}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Team comp — champion icons + truncated names */}
       {isSR && (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
           {[team1, team2].map((teamArr, ti) => (
-            <div key={ti} style={{ display: 'grid', gridTemplateRows: 'repeat(5, 16px)', gap: 2 }}>
+            <div key={ti} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {teamArr.slice(0, 5).map((p: any, i: number) => {
                 const pc = champByKey?.[String(p.championId)];
-                const mine = p.puuid === puuid;
+                const isMe = p.puuid === puuid;
                 const href = profileHref(region, p.gameName ?? p.summonerName, p.tagLine);
-                const img = (
-                  <img
-                    src={pc?.image}
-                    alt=""
-                    title={p.summonerName}
-                    onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
-                    style={{
-                      width: 16, height: 16, borderRadius: 3, objectFit: 'cover',
-                      opacity: ti === 0 ? 1 : 0.4,
-                      outline: mine ? `1px solid ${C.gold}` : 'none',
-                    }}
-                  />
+                const shortName = (p.gameName || p.summonerName || '').slice(0, 9);
+                const inner = (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <img
+                      src={pc?.image} alt="" title={p.gameName || p.summonerName}
+                      onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
+                      style={{ width: 18, height: 18, borderRadius: 3, objectFit: 'cover', flexShrink: 0,
+                        opacity: ti === 1 ? 0.5 : 1,
+                        outline: isMe ? `1px solid ${C.gold}` : 'none' }}
+                    />
+                    <span style={{
+                      fontSize: 9, color: isMe ? C.gold : ti === 0 ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.3)',
+                      fontWeight: isMe ? 700 : 400, whiteSpace: 'nowrap', overflow: 'hidden',
+                      maxWidth: 52, textOverflow: 'ellipsis', lineHeight: 1,
+                    }}>
+                      {shortName}
+                    </span>
+                  </div>
                 );
                 return href ? (
-                  <Link key={i} to={href} onClick={(e) => e.stopPropagation()} title={`Ver perfil de ${p.summonerName}`}>
-                    {img}
+                  <Link key={i} to={href} onClick={(e) => e.stopPropagation()}
+                    title={`Ver perfil de ${p.gameName || p.summonerName}`}
+                    style={{ textDecoration: 'none' }}>
+                    {inner}
                   </Link>
-                ) : (
-                  <span key={i}>{img}</span>
-                );
+                ) : <div key={i}>{inner}</div>;
               })}
             </div>
           ))}
@@ -1137,60 +1366,146 @@ function RolePerformance({ perf, loading }: { perf: Record<Role, { games: number
 }
 
 // ─── Champions table ────────────────────────────────────────────────────────
-function ChampionsTable({ rows, champByKey, loading, bestPlayers, region }: {
+function ChampionsTable({ rows, champByKey, loading, bestPlayers, region, opggChampStats }: {
   rows: any[]; champByKey: any; loading: boolean;
   bestPlayers?: Record<string, any> | null; region: string;
+  opggChampStats?: any[] | null;
 }) {
+  const [showAll, setShowAll] = useState(false);
+
+  // Build name → DDragon champion lookup (for OP.GG name matching)
+  const champByName = useMemo(() => {
+    if (!champByKey) return {};
+    const m: Record<string, any> = {};
+    Object.values(champByKey).forEach((c: any) => {
+      const key = (c.name || '').toLowerCase().replace(/[_'\s.&]/g, '');
+      m[key] = c;
+    });
+    return m;
+  }, [champByKey]);
+
+  // Build display rows: OP.GG (all-season) as primary; local matches as fallback
+  const displayRows = useMemo(() => {
+    if (opggChampStats?.length) {
+      return [...opggChampStats]
+        .filter((cs: any) => cs.play > 0)
+        .sort((a: any, b: any) => b.play - a.play)
+        .map((cs: any) => {
+          const nameKey = cs.champion_name.toLowerCase().replace(/[_'\s.&]/g, '');
+          const champData = champByName[nameKey];
+          const play = cs.play || 1;
+          const wr = Math.round((cs.win / play) * 100);
+          // OP.GG always returns career totals for kill/death/assist — divide by play
+          const avgK = parseFloat((cs.kill   / play).toFixed(1));
+          const avgD = parseFloat((cs.death  / play).toFixed(1));
+          const avgA = parseFloat((cs.assist / play).toFixed(1));
+          const kda = avgD === 0 ? '∞' : ((avgK + avgA) / avgD).toFixed(2);
+          return { champData, championName: cs.champion_name, play: cs.play, win: cs.win, lose: cs.lose, wr, kda, avgK, avgD, avgA, serverRank: cs.server_rank ?? null };
+        });
+    }
+    // Fallback: rows from local match history
+    return rows.map((r: any) => {
+      const c = champByKey?.[String(r.id)];
+      return { champData: c, championName: c?.name || String(r.id), play: r.games, win: Math.round(r.games * r.wr / 100), lose: r.games - Math.round(r.games * r.wr / 100), wr: r.wr, kda: r.kda };
+    });
+  }, [opggChampStats, rows, champByKey, champByName]);
+
+  const visibleRows = showAll ? displayRows : displayRows.slice(0, 8);
+  const usingOpgg = (opggChampStats?.length ?? 0) > 0;
+
   return (
     <Panel style={{ padding: 26 }}>
-      <SectionTitle>Campeones · Solo/Dúo</SectionTitle>
-      {loading ? (
+      <SectionTitle right={
+        usingOpgg ? <span style={{ fontSize: 10, color: 'rgba(11,196,227,0.6)', fontWeight: 600, letterSpacing: '0.1em' }}>TODA LA TEMPORADA</span> : undefined
+      }>
+        Campeones · {usingOpgg ? 'Clasificatoria' : 'Solo/Dúo'}
+      </SectionTitle>
+      {loading && !displayRows.length ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={32} />)}
         </div>
-      ) : rows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Sin campeones clasificados aún.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 1.1fr 0.9fr', fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', paddingBottom: 10, borderBottom: HAIRLINE }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.7fr 1fr 0.8fr', fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', paddingBottom: 9, borderBottom: HAIRLINE }}>
             <span>Campeón</span><span>KDA</span><span>Partidas · WR</span><span>Mejor jug.</span>
           </div>
-          {rows.map((r) => {
-            const c = champByKey?.[String(r.id)];
-            const best = bestPlayers?.[String(r.id)];
+          {visibleRows.map((r: any, idx: number) => {
+            const c = r.champData;
+            // Best player for this champ (from local match data — best by champion ID)
+            const localId = c ? Object.keys(champByKey || {}).find(k => champByKey[k] === c) : null;
+            const best = localId ? bestPlayers?.[localId] : null;
             const bestTier = best?.tier ? `${best.tier[0]}${best.tier.slice(1).toLowerCase()} ${best.rank || ''}`.trim() : null;
             const bestHref = best ? profileHref(region, best.gameName, best.tagLine) : null;
             const bestInner = best ? (
               <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, minWidth: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: C.redHover, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {best.gameName}
-                </span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: C.redHover, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{best.gameName}</span>
                 {bestTier && <span style={{ fontSize: 10, color: C.gold }}>{bestTier}</span>}
               </div>
-            ) : (
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>—</span>
-            );
+            ) : <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>—</span>;
+
             return (
               <div
-                key={r.id}
-                style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 1.1fr 0.9fr', alignItems: 'center', gap: 8, padding: '11px 6px', borderBottom: HAIRLINE, transition: 'background .16s' }}
+                key={r.championName + idx}
+                style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.7fr 1fr 0.8fr', alignItems: 'center', gap: 8, padding: '10px 6px', borderBottom: HAIRLINE, transition: 'background .16s', cursor: 'default' }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
               >
+                {/* Champion icon + name + KDA details */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  <img src={c?.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c?.name || r.id}</span>
+                  {c?.image ? (
+                    <img src={c.image} alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = 'hidden')} style={{ width: 32, height: 32, borderRadius: 7, objectFit: 'cover', flexShrink: 0 }} />
+                  ) : (
+                    <div style={{ width: 32, height: 32, borderRadius: 7, background: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>?</div>
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                      {c?.name || r.championName.toLowerCase().replace(/\b\w/g, (s: string) => s.toUpperCase()).replace(/_/g, ' ')}
+                    </span>
+                    {usingOpgg && r.avgK != null && (
+                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                        {r.avgK} / <span style={{ color: C.loss }}>{r.avgD}</span> / {r.avgA}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <span style={{ fontFamily: FONT_KDA, fontSize: 13, fontWeight: 700, color: Number(r.kda) >= 3 ? C.gold : '#fff' }}>{r.kda}</span>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
-                  {r.games}P · <span style={{ color: r.wr >= 50 ? C.win : C.loss, fontWeight: 700 }}>{r.wr}%</span>
+
+                {/* KDA ratio */}
+                <span style={{ fontFamily: FONT_KDA, fontSize: 13, fontWeight: 700, color: Number(r.kda) >= 3 ? C.gold : Number(r.kda) >= 2 ? '#fff' : 'rgba(255,255,255,0.6)' }}>
+                  {r.kda === '∞' ? <span style={{ color: C.teal }}>∞</span> : r.kda}
                 </span>
+
+                {/* Games + WR + server rank */}
+                <div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
+                    {r.play}P · <span style={{ color: r.wr >= 55 ? C.win : r.wr < 45 ? C.loss : C.gold, fontWeight: 700 }}>{r.wr}%</span>
+                  </div>
+                  {r.serverRank != null ? (
+                    <div style={{ fontSize: 10, color: C.teal, fontWeight: 700 }}>#{r.serverRank.toLocaleString()} servidor</div>
+                  ) : (
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{r.win}V · {r.lose}D</div>
+                  )}
+                </div>
+
+                {/* Best player */}
                 {bestHref ? (
-                  <Link to={bestHref} style={{ textDecoration: 'none', minWidth: 0 }} title={`Mejor ${c?.name || ''}: ${best.gameName}`}>{bestInner}</Link>
+                  <Link to={bestHref} style={{ textDecoration: 'none', minWidth: 0 }} title={`Mejor con ${c?.name || ''}`}>{bestInner}</Link>
                 ) : bestInner}
               </div>
             );
           })}
+
+          {displayRows.length > 8 && (
+            <button
+              onClick={() => setShowAll(s => !s)}
+              style={{ marginTop: 10, padding: '7px 0', border: 'none', background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; }}
+            >
+              {showAll ? '▲ Mostrar menos' : `▼ Ver todos los ${displayRows.length} campeones`}
+            </button>
+          )}
         </div>
       )}
     </Panel>

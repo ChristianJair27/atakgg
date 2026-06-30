@@ -8,22 +8,47 @@
  * In-game overlay via GEP game ID 5426 (approved without store listing).
  * ─────────────────────────────────────────────────────────────────────────── */
 
-const IN_GAME_WINDOW   = 'in_game'
-const CHAMP_SEL_WINDOW = 'champ_select'
-const QUEUE_WINDOW     = 'queue_profile'
-const EOG_WINDOW       = 'end_of_game'
-const ARENA_AUG_WINDOW = 'arena_augments'
+const IN_GAME_WINDOW      = 'in_game'
+const CHAMP_SEL_WINDOW    = 'champ_select'
+const QUEUE_WINDOW        = 'queue_profile'
+const EOG_WINDOW          = 'end_of_game'
+const ARENA_AUG_WINDOW    = 'arena_augments'
+const DESKTOP_WINDOW      = 'desktop'
+const HOME_WINDOW         = 'home'
+const PLAYER_STATS_WINDOW = 'player_stats'
 const LOL_GAME_ID      = 5426
 const BACKEND_URL      = 'http://localhost:4000'
 
 const INGAME_FEATURES  = ['match_info', 'live_client_data', 'summoner_info', 'kill', 'death', 'counters', 'team_frames']
 
-// Common LoL install paths for lockfile discovery
-const LOCKFILE_PATHS = [
+// Common LoL install paths for lockfile discovery (expanded to cover all drives)
+let LOCKFILE_PATHS = [
   'C:/Riot Games/League of Legends/lockfile',
+  'D:/Riot Games/League of Legends/lockfile',
+  'E:/Riot Games/League of Legends/lockfile',
+  'F:/Riot Games/League of Legends/lockfile',
+  'G:/Riot Games/League of Legends/lockfile',
   'C:/Program Files/Riot Games/League of Legends/lockfile',
   'C:/Program Files (x86)/Riot Games/League of Legends/lockfile',
+  'D:/Program Files/Riot Games/League of Legends/lockfile',
+  'E:/Program Files/Riot Games/League of Legends/lockfile',
 ]
+
+// Derive lockfile path from the game's executable path reported by Overwolf.
+// executionPath is typically "X:\...\Game\League of Legends.exe" — lockfile lives two levels up.
+function registerLockfileFromExe(executionPath) {
+  if (!executionPath) return
+  const norm = executionPath.replace(/\\/g, '/')
+  const dir1 = norm.replace(/[^/]+$/, '')       // parent dir (Game/)
+  const dir2 = dir1.replace(/[^/]+\/$/, '')      // grandparent dir (LoL root)
+  for (const dir of [dir2, dir1]) {
+    const p = dir + 'lockfile'
+    if (!LOCKFILE_PATHS.includes(p)) {
+      LOCKFILE_PATHS.unshift(p)
+      log('Registered lockfile path from exe:', p)
+    }
+  }
+}
 
 let gamePhase           = 'None'
 let isGameRunning       = false
@@ -53,7 +78,46 @@ let ddMapLoading     = false
 const summonerInfoCache = {}  // cellId → LCU summoner object (rank, level, etc.)
 const masteryCache      = {}  // "${puuid}:${champId}" → mastery object
 
+// Player rank cache: summonerName → rank object { tier, division, lp, winRate, tier_image_url }
+// Populated during champ-select or in-game; persists for the session.
+const playerRankCache   = {}
+// OP.GG full profile cache: summonerName → OPGGFullProfile response from /api/opgg/summoner-full
+const playerOpggCache   = {}
+let   lcuPlatform       = null   // e.g. "LA1", "NA1" — detected from LCU at queue time
+
 function log(...args) { console.log('[ATAK BG]', ...args) }
+
+// ── OP.GG full profile fetcher (fire-and-forget) ──────────────────────────
+async function fetchOpggForSlot(slot, info) {
+  const name = slot.summonerName || info?.displayName || ''
+  if (!name || playerOpggCache[name]) return
+
+  let gameName = info?.gameName || ''
+  let tagLine  = info?.tagLine  || ''
+
+  // Fallback: parse summonerName if it contains '#'
+  if (!gameName && name.includes('#')) {
+    ;[gameName, tagLine] = name.split('#')
+  }
+
+  if (!gameName || !tagLine || !lcuPlatform) return
+
+  const champName = slot.champName || ''
+  const url = `${BACKEND_URL}/api/opgg/summoner-full?game_name=${encodeURIComponent(gameName)}&tag_line=${encodeURIComponent(tagLine)}&region=${encodeURIComponent(lcuPlatform)}&champion=${encodeURIComponent(champName)}`
+
+  try {
+    const r = await fetch(url)
+    if (!r.ok) return
+    const body = await r.json()
+    if (body.ok) {
+      playerOpggCache[name] = { ...body, _gameName: gameName, _tagLine: tagLine }
+      // Push update to champ_select window if it's open
+      if (champSelWindowId) {
+        sendMessage(champSelWindowId, { type: 'opgg-player-data', summonerName: name, data: playerOpggCache[name] })
+      }
+    }
+  } catch (err) { log('OP.GG fetch failed for', name, err?.message) }
+}
 
 // ── Window helpers ─────────────────────────────────────────────────────────
 
@@ -64,11 +128,17 @@ function getWindow(name, cb) {
   })
 }
 
-const inGameRef        = { current: null }
-const champSelRef      = { current: null }
-const queueProfileRef  = { current: null }
-const eogRef           = { current: null }
-const arenaAugRef      = { current: null }
+const inGameRef         = { current: null }
+const champSelRef       = { current: null }
+const queueProfileRef   = { current: null }
+const eogRef            = { current: null }
+const arenaAugRef       = { current: null }
+const desktopRef        = { current: null }
+const homeRef           = { current: null }
+const playerStatsRef    = { current: null }
+let desktopWindowId     = null
+let homeWindowId        = null
+let playerStatsWindowId = null
 let prevAugmentCount   = 0
 let arenaRound         = 0
 let isArenaMode        = false
@@ -98,12 +168,102 @@ function sendMessage(windowId, content) {
   overwolf.windows.sendMessage(windowId, 'atak-message', content, () => {})
 }
 
-function showOverlay()      { showWindow(IN_GAME_WINDOW,   inGameRef,   id => { inGameWindowId = id; sendMessage(id, { type: 'game-started' }) }) }
+function showOverlay() {
+  showWindow(IN_GAME_WINDOW, inGameRef, id => {
+    inGameWindowId = id
+    sendMessage(id, { type: 'game-started' })
+  })
+}
+
+// in_game.js polls live data via backend proxy (fetch to localhost:4000/api/lcu-proxy/game-data).
+// This IPC channel is still used for rank badges and AI advice which only background.js has.
+window.onInGameReady = function(windowId) {
+  log('in_game ready (id=' + windowId + ')')
+  inGameWindowId = windowId
+  inGameRef.current = windowId
+  if (!pollingInterval) startPortPolling()
+}
 function hideOverlay()      { sendMessage(inGameWindowId, { type: 'game-ended' }); setTimeout(() => { closeWindow(IN_GAME_WINDOW, inGameRef); inGameWindowId = null }, 400) }
 function showChampSelect()  { showWindow(CHAMP_SEL_WINDOW, champSelRef, id => { champSelWindowId = id }) }
 function hideChampSelect()  { closeWindow(CHAMP_SEL_WINDOW, champSelRef); champSelWindowId = null }
 function showQueueProfile() { showWindow(QUEUE_WINDOW, queueProfileRef, id => { queueProfileWindowId = id; fetchAndSendQueueData(id) }) }
 function hideQueueProfile() { closeWindow(QUEUE_WINDOW, queueProfileRef); queueProfileWindowId = null }
+function showDesktop()     { showWindow(DESKTOP_WINDOW, desktopRef, id => { desktopWindowId = id }) }
+function hideDesktop()     { closeWindow(DESKTOP_WINDOW, desktopRef); desktopWindowId = null }
+function showHome() {
+  const alreadyOpen = !!homeRef.current
+  showWindow(HOME_WINDOW, homeRef, id => {
+    homeWindowId = id
+    // If window was already open just send the profile URL immediately;
+    // otherwise give home.html 800ms to finish loading before sending it.
+    const delay = alreadyOpen ? 100 : 800
+    setTimeout(() => fetchAndSendHomeUrl(id), delay)
+  })
+}
+function hideHome()        { closeWindow(HOME_WINDOW, homeRef); homeWindowId = null }
+
+async function fetchAndSendHomeUrl(windowId, attempt = 0) {
+  log('fetchAndSendHomeUrl attempt', attempt, 'windowId=', !!windowId, 'lcuPort=', lcuPort)
+  if (!windowId) return
+  const MAX = 25  // ~50 s of retries
+  if (!lcuPort) {
+    log('fetchAndSendHomeUrl: no lcuPort, will retry')
+    if (attempt < MAX) setTimeout(() => fetchAndSendHomeUrl(windowId, attempt + 1), 2000)
+    return
+  }
+  try {
+    const summoner = await lcuGet('/lol-summoner/v1/current-summoner')
+    // platformId missing in newer League clients — fall back to riotclient endpoint
+    if (summoner?.platformId) {
+      lcuPlatform = summoner.platformId
+    } else if (!lcuPlatform) {
+      try {
+        const locale = await lcuGet('/riotclient/region-locale')
+        if (locale?.region) lcuPlatform = locale.region
+        log('fetchAndSendHomeUrl region from riotclient:', lcuPlatform)
+      } catch (_) {}
+    }
+    log('fetchAndSendHomeUrl summoner:', summoner?.gameName, summoner?.tagLine, '| platform:', lcuPlatform)
+    if (summoner?.gameName && summoner?.tagLine && lcuPlatform) {
+      const name = encodeURIComponent(summoner.gameName)
+      const tag  = encodeURIComponent(summoner.tagLine)
+      const url  = `http://localhost:8080/profile/${lcuPlatform.toLowerCase()}/${name}-${tag}`
+      log('Home profile URL:', url)
+      sendMessage(windowId, { type: 'summoner-profile-url', url })
+    } else {
+      log('fetchAndSendHomeUrl: summoner incomplete, retrying')
+      if (attempt < MAX) setTimeout(() => fetchAndSendHomeUrl(windowId, attempt + 1), 2000)
+    }
+  } catch (err) {
+    log('fetchAndSendHomeUrl failed (attempt ' + attempt + '):', err?.message)
+    if (attempt < MAX) setTimeout(() => fetchAndSendHomeUrl(windowId, attempt + 1), 2000)
+  }
+}
+function showPlayerStats() {
+  const alreadyOpen = !!playerStatsRef.current
+  showWindow(PLAYER_STATS_WINDOW, playerStatsRef, id => {
+    playerStatsWindowId = id
+    // Give the window time to load its JS before sending data
+    const delay = alreadyOpen ? 100 : 700
+    setTimeout(() => {
+      sendMessage(id, {
+        type:  'player-stats-data',
+        game:  currentGameState,
+        ranks: { ...playerRankCache },
+        opgg:  { ...playerOpggCache },
+      })
+      // Also trigger immediate rank fetch for any players not yet cached
+      if (currentGameState?.allPlayers) fetchMissingRanks(currentGameState.allPlayers)
+    }, delay)
+  })
+}
+function hidePlayerStats() {
+  closeWindow(PLAYER_STATS_WINDOW, playerStatsRef)
+  playerStatsWindowId = null
+}
+// Expose so player_stats.html close button can call it
+window.hidePlayerStats = hidePlayerStats
+
 function showEogWindow()    { showWindow(EOG_WINDOW, eogRef, id => { eogWindowId = id; startEogPoll(id) }) }
 function hideEogWindow()    {
   if (eogPollTimer) { clearTimeout(eogPollTimer); eogPollTimer = null }
@@ -149,17 +309,26 @@ function parseLockfile(content) {
   return parts.length >= 5 ? { port: parts[2], password: parts[3] } : null
 }
 
-async function lcuGet(path) {
-  // Route through backend proxy — Chromium/CEF rejects LCU's self-signed cert;
-  // Node.js skips cert verification with rejectUnauthorized:false.
-  // Use GET (no preflight) — route sets CORS headers explicitly.
-  const url = 'http://localhost:4000/api/lcu-proxy'
-    + '?port=' + encodeURIComponent(lcuPort)
-    + '&password=' + encodeURIComponent(lcuPass)
-    + '&path=' + encodeURIComponent(path)
-  const res = await fetch(url)
-  if (!res.ok) throw new Error('proxy ' + res.status)
-  return res.json()
+function lcuGet(path) {
+  // Use overwolf.web.sendHttpRequest — same method used for port 2999.
+  // It bypasses TLS cert validation (LCU uses self-signed) and CORS, no proxy needed.
+  return new Promise((resolve, reject) => {
+    const url = 'https://127.0.0.1:' + lcuPort + path
+    const auth = 'Basic ' + btoa('riot:' + lcuPass)
+    overwolf.web.sendHttpRequest(
+      url,
+      overwolf.web.enums.HttpRequestMethods.GET,
+      [{ key: 'Authorization', value: auth }, { key: 'Accept', value: 'application/json' }],
+      null,
+      result => {
+        if (!result?.success) { reject(new Error(result?.error || 'LCU unreachable')); return }
+        if (result.statusCode === 404) { reject(new Error('HTTP 404')); return }
+        if (result.statusCode >= 400)  { reject(new Error('HTTP ' + result.statusCode)); return }
+        try { resolve(JSON.parse(result.data)) }
+        catch (e) { reject(new Error('JSON: ' + e.message)) }
+      }
+    )
+  })
 }
 
 function startLcuPolling() {
@@ -206,8 +375,12 @@ async function pollLcu() {
     }
   } catch (err) {
     const msg = err?.message || ''
-    if (msg.includes('Failed to fetch') || msg.includes('ERR_CONNECTION_REFUSED') || msg.includes('HTTP 404')) {
-      if (lcuPort) { log('LCU disconnected —', msg); lcuPort = null; lcuPass = null }
+    const disconnected = msg.includes('Failed to fetch') || msg.includes('ERR_CONNECTION_REFUSED')
+      || msg.includes('HTTP 404') || msg.includes('LCU unreachable') || msg.includes('unreachable')
+      || msg.includes('Connection refused') || msg.includes('ECONNREFUSED')
+    if (disconnected && lcuPort) {
+      log('LCU disconnected —', msg)
+      lcuPort = null; lcuPass = null
     }
   }
 }
@@ -256,6 +429,27 @@ async function fetchAndSendQueueData(windowId) {
       lcuGet('/lol-ranked/v1/current-ranked-stats').catch(() => null),
       lcuGet('/lol-champion-mastery/v1/top-champion-masteries').catch(() => null),
     ])
+    if (summoner?.platformId) {
+      lcuPlatform = summoner.platformId
+    } else if (!lcuPlatform) {
+      const locale = await lcuGet('/riotclient/region-locale').catch(() => null)
+      if (locale?.region) lcuPlatform = locale.region
+    }
+    // Navigate the desktop window to the summoner's profile page.
+    // After desktop.html redirects to the web app, the window URL has changed from
+    // desktop.html to the web app — so sendMessage won't reach it anymore.
+    // Instead, use overwolf.windows.changeWebviewUrl (if supported) or just log the URL
+    // so the user can navigate manually. The queue_profile window shows the profile inline.
+    if (summoner?.gameName && summoner?.tagLine && lcuPlatform) {
+      const name = encodeURIComponent(summoner.gameName)
+      const tag  = encodeURIComponent(summoner.tagLine)
+      const profileUrl = `http://localhost:8080/profile/${lcuPlatform.toLowerCase()}/${name}-${tag}`
+      log('Profile URL for desktop:', profileUrl)
+      // Try to navigate desktop window if it's still on the local HTML (before redirect)
+      if (desktopWindowId) {
+        sendMessage(desktopWindowId, { type: 'summoner-profile-url', url: profileUrl })
+      }
+    }
     const topMasteries = (Array.isArray(masteries) ? masteries : []).slice(0, 5).map(m => ({
       championId:     m.championId,
       championLevel:  m.championLevel,
@@ -345,7 +539,8 @@ async function pollChampSelect() {
     theirTeamBans: (session.bans?.theirTeamBans || []).map(resolveBan),
   }
 
-  const timerSecs = Math.ceil((session.timer?.adjustedTimeLeftInPhase || 0) / 1000)
+  const timerSecs  = Math.ceil((session.timer?.adjustedTimeLeftInPhase || 0) / 1000)
+  const timerPhase = session.timer?.phase || 'PLANNING'
 
   // Queue summoner info + mastery fetches (non-blocking, cached)
   const allSlots = [...myTeam, ...theirTeam]
@@ -363,10 +558,41 @@ async function pollChampSelect() {
     if (masteryCache[mk]) mastery[mk] = masteryCache[mk]
   }
 
+  // Trigger OP.GG fetches for all slots (fire-and-forget)
+  for (const s of allSlots) {
+    const info = summonerInfoCache[s.cellId]
+    if (s.summonerName && info) fetchOpggForSlot(s, info)
+  }
+
+  // Collect available OP.GG data
+  const opggData = {}
+  for (const s of allSlots) {
+    if (s.summonerName && playerOpggCache[s.summonerName]) {
+      opggData[s.summonerName] = playerOpggCache[s.summonerName]
+    }
+  }
+
   sendMessage(champSelWindowId, {
     type: 'champ-select-full',
-    data: { localCellId, myTeam, theirTeam, bans, timerSecs, summoners, mastery },
+    data: { localCellId, myTeam, theirTeam, bans, timerSecs, timerPhase, platform: lcuPlatform, summoners, mastery, opggData },
   })
+
+  // Build summonerName → rank from LCU summonerInfoCache (best-effort)
+  for (const s of allSlots) {
+    const info = summonerInfoCache[s.cellId]
+    if (!info || !s.summonerName) continue
+    // LCU may surface rank under different field paths; try both known shapes
+    const solo = info.rankedStats?.rankedLeagueStat
+      ?? info.rankStats?.rankedLeagueStat
+      ?? (info.rankedLeagueStats ?? []).find(r => r.queueType === 'RANKED_SOLO_5x5')
+    if (solo) {
+      playerRankCache[s.summonerName] = {
+        tier: solo.tier ?? null,
+        division: solo.rank ?? solo.division ?? null,
+        lp: solo.leaguePoints ?? solo.lp ?? null,
+      }
+    }
+  }
 
   const me = myTeam.find(p => p.cellId === localCellId)
   const myChampId = me?.champId || 0
@@ -374,7 +600,7 @@ async function pollChampSelect() {
     lastChampionId = myChampId
     if (me?.champName) {
       log('ChampSelect: my champ =', me.champName, me.isLocked ? '[LOCKED]' : '[hover]')
-      fetchChampionRecommendation(me.champName)
+      fetchChampionRecommendation(me.champName, me.position)
     }
   }
 }
@@ -387,9 +613,11 @@ function handleChampSelectData(data) {
   if (champName && champName !== 'None') fetchChampionRecommendation(champName)
 }
 
-async function fetchChampionRecommendation(championName) {
+async function fetchChampionRecommendation(championName, position) {
   try {
-    const res = await fetch(BACKEND_URL + '/api/champ-select?champion=' + encodeURIComponent(championName))
+    let url = BACKEND_URL + '/api/champ-select?champion=' + encodeURIComponent(championName)
+    if (position) url += '&position=' + encodeURIComponent(position)
+    const res = await fetch(url)
     if (res.ok) {
       const rec = await res.json()
       if (rec.ok) sendMessage(champSelWindowId, { type: 'champion-recommendation', data: rec })
@@ -448,12 +676,13 @@ function setupGameListeners() {
 function handlePhaseChange(newPhase) {
   // Normalise minor post-game phases
   if (newPhase === 'WaitingForStats' || newPhase === 'PreEndOfGame') newPhase = 'EndOfGame'
-  // Map lobby/matchmaking/ready check → single internal 'Queue' phase
-  if (newPhase === 'Lobby' || newPhase === 'Matchmaking' || newPhase === 'ReadyCheck') {
+  // Map matchmaking/ready check → single internal 'Queue' phase.
+  // 'Lobby' is intentionally excluded — being in lobby ≠ searching for a game.
+  if (newPhase === 'Matchmaking' || newPhase === 'ReadyCheck') {
     // Notify queue window if it's a ready check (distinct from matchmaking)
     if (newPhase === 'ReadyCheck' && queueProfileWindowId) {
       sendMessage(queueProfileWindowId, { type: 'queue-phase', phase: 'ReadyCheck' })
-    } else if (newPhase !== 'ReadyCheck' && queueProfileWindowId) {
+    } else if (queueProfileWindowId) {
       sendMessage(queueProfileWindowId, { type: 'queue-phase', phase: 'Matchmaking' })
     }
     newPhase = 'Queue'
@@ -463,20 +692,36 @@ function handlePhaseChange(newPhase) {
   const prev = gamePhase; gamePhase = newPhase
   log('Phase: ' + prev + ' → ' + newPhase)
 
+  // First-ever LCU connection — push profile URL to home window immediately
+  if (prev === null && homeWindowId) {
+    setTimeout(() => fetchAndSendHomeUrl(homeWindowId), 300)
+  }
+
   // Exit actions
+  // NOTE: home window is intentionally kept alive through all phases so the user
+  // can Alt-Tab to the web app at any time (lobby, queue, champ-select, in-game).
+  // It is only closed when LoL exits (None) or the user manually closes it.
   if (prev === 'ChampSelect' && newPhase !== 'ChampSelect') {
     hideChampSelect()
     for (const k of Object.keys(summonerInfoCache)) delete summonerInfoCache[k]
     for (const k of Object.keys(masteryCache))      delete masteryCache[k]
+    // playerOpggCache is kept alive for in-game player_stats panel — cleared on InProgress exit
   }
   if (prev === 'Queue'      && newPhase !== 'Queue')      hideQueueProfile()
   if (prev === 'InProgress' && newPhase !== 'InProgress') {
-    hideOverlay(); hideArenaAugWindow()
+    hideOverlay(); hideArenaAugWindow(); hidePlayerStats()
     isArenaMode = false; prevAugmentCount = 0; arenaRound = 0
+    for (const k of Object.keys(playerRankCache)) delete playerRankCache[k]
+    for (const k of Object.keys(playerOpggCache)) delete playerOpggCache[k]
   }
   if (prev === 'EndOfGame'  && newPhase !== 'EndOfGame')  hideEogWindow()
 
   switch (newPhase) {
+    case 'Lobby':
+      hideEogWindow()
+      hideQueueProfile()
+      showHome()
+      break
     case 'Queue':
       hideEogWindow()
       showQueueProfile()
@@ -487,6 +732,7 @@ function handlePhaseChange(newPhase) {
       showChampSelect()
       break
     case 'InProgress':
+      // home window stays open — user can Alt-Tab to see profile / build data
       hideQueueProfile()
       hideChampSelect()
       hideEogWindow()
@@ -495,17 +741,19 @@ function handlePhaseChange(newPhase) {
       break
     case 'EndOfGame':
       stopPortPolling()
-      hideOverlay(); hideArenaAugWindow()
+      hideOverlay(); hideArenaAugWindow(); hidePlayerStats()
       hideChampSelect()
       hideQueueProfile()
       showEogWindow()
+      // home stays open — returns to it after dismissing EOG
       break
     case 'None':
       stopPortPolling()
-      hideOverlay(); hideArenaAugWindow()
+      hideOverlay(); hideArenaAugWindow(); hidePlayerStats()
       hideChampSelect()
       hideQueueProfile()
       hideEogWindow()
+      hideHome()  // LoL exited — close home
       break
   }
 }
@@ -515,36 +763,54 @@ function handlePhaseChange(newPhase) {
 function startPortPolling() {
   if (pollingInterval) return
 
-  async function poll() {
-    try {
-      const res  = await fetch('http://127.0.0.1:2999/liveclientdata/allgamedata')
-      if (!res.ok) return
-      const data = await res.json()
-      currentGameState = { ...data, source: 'liveclient', timestamp: Date.now() }
-      if (gamePhase !== 'InProgress') handlePhaseChange('InProgress')
-      sendMessage(inGameWindowId, { type: 'game-data', data })
+  // Use overwolf.web.sendHttpRequest instead of fetch — bypasses CORS restrictions
+  // (LoL port 2999 does not send Access-Control-Allow-Origin headers)
+  function poll() {
+    overwolf.web.sendHttpRequest(
+      'https://127.0.0.1:2999/liveclientdata/allgamedata',
+      overwolf.web.enums.HttpRequestMethods.GET,
+      [], null,
+      result => {
+        if (!result?.success || result.statusCode !== 200) return
+        let data
+        try { data = JSON.parse(result.data) } catch { return }
 
-      // Arena (CHERRY) mode — augment overlay
-      if (data.gameData?.gameMode === 'CHERRY') {
-        const localName   = data.activePlayer?.summonerName
-        const localPlayer = (data.allPlayers || []).find(p => p.summonerName === localName)
-        const myChamp     = localPlayer?.championName || null
-        const augments    = data.activePlayer?.augments || []
-        const augCount    = augments.length
-
-        if (!arenaAugRef.current) {
-          isArenaMode = true; prevAugmentCount = augCount; arenaRound = 0
-          showArenaAugWindow(myChamp, augCount, arenaRound)
-          if (myChamp) fetchAugmentAITip(myChamp, augments)
-        } else if (augCount !== prevAugmentCount) {
-          prevAugmentCount = augCount
-          sendMessage(arenaAugRef.current, { type: 'aug-update', champName: myChamp, augCount, round: arenaRound })
-          if (myChamp) fetchAugmentAITip(myChamp, augments)
+        currentGameState = { ...data, source: 'liveclient', timestamp: Date.now() }
+        if (gamePhase !== 'InProgress') handlePhaseChange('InProgress')
+        data._playerRanks = playerRankCache
+        sendMessage(inGameWindowId, { type: 'game-data', data })
+        if (playerStatsWindowId) {
+          sendMessage(playerStatsWindowId, {
+            type:  'player-stats-update',
+            game:  data,
+            ranks: { ...playerRankCache },
+            opgg:  { ...playerOpggCache },
+          })
         }
-      }
+        if (lcuPlatform) fetchMissingRanks(data.allPlayers ?? [])
 
-      if (!aiCallInProgress && Math.random() < 0.2) sendToAI(data)
-    } catch { /* not in match yet */ }
+        // Arena (CHERRY) mode — augment overlay
+        if (data.gameData?.gameMode === 'CHERRY') {
+          const localName   = data.activePlayer?.summonerName
+          const localPlayer = (data.allPlayers || []).find(p => p.summonerName === localName)
+          const myChamp     = localPlayer?.championName || null
+          const augments    = data.activePlayer?.augments || []
+          const augCount    = augments.length
+
+          if (!arenaAugRef.current) {
+            isArenaMode = true; prevAugmentCount = augCount; arenaRound = 0
+            showArenaAugWindow(myChamp, augCount, arenaRound)
+            if (myChamp) fetchAugmentAITip(myChamp, augments)
+          } else if (augCount !== prevAugmentCount) {
+            prevAugmentCount = augCount
+            sendMessage(arenaAugRef.current, { type: 'aug-update', champName: myChamp, augCount, round: arenaRound })
+            if (myChamp) fetchAugmentAITip(myChamp, augments)
+          }
+        }
+
+        if (!aiCallInProgress && Math.random() < 0.2) sendToAI(data)
+      }
+    )
   }
 
   poll()   // fetch immediately — don't wait 2s for first data
@@ -553,6 +819,34 @@ function startPortPolling() {
 
 function stopPortPolling() {
   if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null }
+}
+
+// Fetch OP.GG rank for players not yet in cache — fire-and-forget, results arrive async
+const rankFetchInFlight = new Set()
+async function fetchMissingRanks(players) {
+  if (!lcuPlatform) return
+  for (const p of players) {
+    const name = p.summonerName
+    if (!name || playerRankCache[name] || rankFetchInFlight.has(name)) continue
+    // LCDA newer format: "GameName#TAG" — split on #
+    if (!name.includes('#')) continue
+    const [gameName, tagLine] = name.split('#')
+    rankFetchInFlight.add(name)
+    fetch(BACKEND_URL + '/api/opgg/summoner?game_name=' + encodeURIComponent(gameName)
+      + '&tag_line=' + encodeURIComponent(tagLine)
+      + '&region=' + encodeURIComponent(lcuPlatform))
+      .then(r => r.ok ? r.json() : null)
+      .then(body => {
+        if (body?.ok && body.rank) {
+          playerRankCache[name] = body.rank
+          log('Rank fetched:', name, body.rank.tier, body.rank.division)
+          if (inGameWindowId)      sendMessage(inGameWindowId,      { type: 'rank-update',         ranks: playerRankCache })
+          if (playerStatsWindowId) sendMessage(playerStatsWindowId, { type: 'player-stats-update', ranks: { ...playerRankCache } })
+        }
+      })
+      .catch(() => {})
+      .finally(() => rankFetchInFlight.delete(name))
+  }
 }
 
 // ── AI Backend ─────────────────────────────────────────────────────────────
@@ -627,49 +921,69 @@ async function fetchAugmentAITip(champName, augments) {
 function init() {
   log('Background started — LOL_GAME_ID:', LOL_GAME_ID)
 
-  setupGameListeners()
-  startLcuPolling()
+  // Open the home window as the main UI (start_window is "background", so we open it manually)
+  showHome()
+
+  try { setupGameListeners() } catch (e) { log('setupGameListeners error:', e?.message) }
+  try { startLcuPolling()    } catch (e) { log('startLcuPolling error:',    e?.message) }
 
   // GEP for in-game overlay (5426) — game detection
-  overwolf.games.onGameInfoUpdated.addListener(e => {
-    const info = e?.gameInfo
-    if (!info?.isRunning) {
-      if (isGameRunning) {
-        log('LoL Game exited')
-        isGameRunning = false
-        clearTimeout(gameGepTimer); gameGepTimer = null
-        stopPortPolling(); hideOverlay()
-        // Don't reset gamePhase — LCU polling will transition to None/Lobby
-      }
-      return
-    }
-    if (info.classId === LOL_GAME_ID && !isGameRunning) {
-      log('LoL Game detected — GEP in 3s')
-      isGameRunning = true
-      clearTimeout(gameGepTimer)
-      setTimeout(() => registerGameFeatures(0), 3000)
-    }
-  })
+  try {
+    overwolf.games.onGameInfoUpdated.addListener(e => {
+      try {
+        const info = e?.gameInfo
+        if (!info?.isRunning) {
+          if (isGameRunning) {
+            log('LoL Game exited')
+            isGameRunning = false
+            clearTimeout(gameGepTimer); gameGepTimer = null
+            stopPortPolling(); hideOverlay()
+          }
+          return
+        }
+        if (info.classId === LOL_GAME_ID && !isGameRunning) {
+          registerLockfileFromExe(info.executionPath)
+          log('LoL Game detected — GEP in 3s')
+          isGameRunning = true
+          clearTimeout(gameGepTimer)
+          setTimeout(() => registerGameFeatures(0), 3000)
+        }
+      } catch (e) { log('onGameInfoUpdated handler error:', e?.message) }
+    })
+  } catch (e) { log('onGameInfoUpdated unavailable:', e?.message) }
 
   // Game already running on startup
-  overwolf.games.getRunningGameInfo(result => {
-    if (!result?.isRunning || result.classId !== LOL_GAME_ID) return
-    log('LoL Game already running on startup')
-    isGameRunning = true
-    setTimeout(() => registerGameFeatures(0), 3000)
-    fetch('http://127.0.0.1:2999/liveclientdata/allgamedata')
-      .then(r => r.ok ? handlePhaseChange('InProgress') : null)
-      .catch(() => {})
-  })
+  try {
+    overwolf.games.getRunningGameInfo(result => {
+      if (!result?.isRunning || result.classId !== LOL_GAME_ID) return
+      registerLockfileFromExe(result.executionPath)
+      log('LoL Game already running on startup')
+      isGameRunning = true
+      setTimeout(() => registerGameFeatures(0), 3000)
+    })
+  } catch (e) { log('getRunningGameInfo error:', e?.message) }
 
   // Hotkeys
   try {
     overwolf.settings.hotkeys.onPressed.addListener(event => {
-      if (event.name !== 'toggle_app') return
-      if (inGameWindowId) hideOverlay()
-      else if (gamePhase === 'InProgress') showOverlay()
+      if (event.name === 'toggle_app') {
+        if (inGameWindowId) hideOverlay()
+        else if (gamePhase === 'InProgress') showOverlay()
+      }
+      if (event.name === 'toggle_scoreboard') {
+        if (playerStatsWindowId) hidePlayerStats()
+        else if (gamePhase === 'InProgress') showPlayerStats()
+      }
     })
   } catch (e) { log('hotkeys unavailable:', e?.message) }
+
+  // Re-open home window when user clicks the dock icon or launches the app again
+  try {
+    overwolf.extensions.onAppLaunchTriggered.addListener(() => {
+      log('App re-launch triggered — opening home window')
+      showHome()
+    })
+  } catch (e) { log('onAppLaunchTriggered unavailable:', e?.message) }
 }
 
 init()

@@ -3,6 +3,25 @@ let myTeam  = 'ORDER'
 let myName  = null
 let ddPatch = null
 let isLive  = false
+let playerRanks = {}   // summonerName → { tier, division, lp, win_rate, tier_image_url }
+
+const TIER_ABBR = {
+  IRON:'Fe', BRONZE:'Br', SILVER:'Si', GOLD:'Au', PLATINUM:'Pt',
+  EMERALD:'Em', DIAMOND:'Di', MASTER:'M', GRANDMASTER:'GM', CHALLENGER:'C',
+}
+const TIER_COLOR = {
+  IRON:'#6b6b6b', BRONZE:'#9c5c2d', SILVER:'#a8b4c4', GOLD:'#e6b84a',
+  PLATINUM:'#52c48b', EMERALD:'#4cad6d', DIAMOND:'#6aa5d4',
+  MASTER:'#a26ee8', GRANDMASTER:'#f07c5a', CHALLENGER:'#7de9e7',
+}
+function rankBadgeHtml(name) {
+  const r = playerRanks[name]
+  if (!r?.tier) return ''
+  const abbr  = TIER_ABBR[r.tier] ?? r.tier.slice(0, 2)
+  const color = TIER_COLOR[r.tier] ?? '#888'
+  const div   = (r.division && r.division <= 4) ? ' ' + ['I','II','III','IV'][r.division - 1] : ''
+  return `<span class="rank-badge" style="color:${color}">${abbr}${div}</span>`
+}
 
 const $ = id => document.getElementById(id)
 const POS = {TOP:'TOP',JUNGLE:'JGL',MIDDLE:'MID',BOTTOM:'BOT',UTILITY:'SUP'}
@@ -42,8 +61,13 @@ function animateLiveDot() {
 
 async function getPatch() {
   if (ddPatch) return ddPatch
-  try { const r = await fetch('https://ddragon.leagueoflegends.com/api/versions.json'); ddPatch = (await r.json())[0] }
-  catch { ddPatch = '15.1.1' }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 3000)
+    const r = await fetch('https://ddragon.leagueoflegends.com/api/versions.json', { signal: ctrl.signal })
+    clearTimeout(timer)
+    ddPatch = (await r.json())[0]
+  } catch { ddPatch = '15.1.1' }
   return ddPatch
 }
 // DDragon key overrides: LCDA display name → DDragon file key
@@ -86,6 +110,7 @@ function teamGoldEst(players) {
 
 // ── Main render ─────────────────────────────────────────────────────────────
 async function renderGame(data) {
+  if (data._playerRanks) playerRanks = { ...playerRanks, ...data._playerRanks }
   showLive()
   const patch = await getPatch()
   const gameMode = (data.gameData?.gameMode ?? '').toUpperCase()
@@ -96,38 +121,16 @@ async function renderGame(data) {
   const t = Math.floor(data.gameData?.gameTime ?? 0)
   $('game-time').textContent = fmtTime(t)
 
-  // ── Active player core stats ──
+  // ── Active player (provides level, gold, championStats) ──
   const ap   = data.activePlayer
-  const cs   = ap?.scores?.creepScore  ?? 0
-  const k    = ap?.scores?.kills       ?? 0
-  const d    = ap?.scores?.deaths      ?? 0
-  const a    = ap?.scores?.assists     ?? 0
-  const ward = ap?.scores?.wardScore   ?? 0
   const gold = Math.floor(ap?.currentGold ?? 0)
   const lv   = ap?.level               ?? 1
-  const kda  = d === 0 ? '∞' : ((k + a) / d).toFixed(2)
-  const cspm = t > 60 ? (cs / (t / 60)).toFixed(1) : '—'
 
-  // ── Champion stats ──
-  const cs2  = ap?.championStats ?? {}
-  const hp      = Math.round(cs2.currentHealth      ?? 0)
-  const hpMax   = Math.round(cs2.maxHealth          ?? 1)
-  const mp      = Math.round(cs2.resourceValue      ?? 0)
-  const mpMax   = Math.round(cs2.resourceMax        ?? 1)
-  const mpType  = (cs2.resourceType ?? 'MANA').toUpperCase()
-  const adVal   = Math.round(cs2.attackDamage       ?? 0)
-  const apVal   = Math.round(cs2.abilityPower       ?? 0)
-  const arVal   = Math.round(cs2.armor              ?? 0)
-  const mrVal   = Math.round(cs2.magicResist        ?? 0)
-  const msVal   = Math.round(cs2.moveSpeed          ?? 0)
-  const critVal = Math.round((cs2.critChance        ?? 0) * 100)
-
-  // ── Summoner / champion ──
-  const sn = ap?.summonerName
-  if (sn) { myName = sn; $('summoner-live').textContent = sn }
-  $('lv-badge').textContent = `LV ${lv}`
-
+  // ── Resolve local player from allPlayers (has scores the real API puts there) ──
   const all  = data.allPlayers ?? []
+  const sn   = ap?.summonerName
+  if (sn) { myName = sn; $('summoner-live').textContent = sn }
+
   // Robust match: exact → case-insensitive → first player (fallback)
   const mine = all.find(p => p.summonerName === myName)
            || all.find(p => p.summonerName?.toLowerCase() === myName?.toLowerCase())
@@ -140,6 +143,31 @@ async function renderGame(data) {
     icon.src = cUrl(cn, patch)
     icon.style.opacity = '1'
   }
+
+  // scores live on allPlayers[i], not on activePlayer
+  const cs   = mine?.scores?.creepScore  ?? 0
+  const k    = mine?.scores?.kills       ?? 0
+  const d    = mine?.scores?.deaths      ?? 0
+  const a    = mine?.scores?.assists     ?? 0
+  const ward = mine?.scores?.wardScore   ?? 0
+  const kda  = d === 0 ? '∞' : ((k + a) / d).toFixed(2)
+  const cspm = t > 60 ? (cs / (t / 60)).toFixed(1) : '—'
+
+  $('lv-badge').textContent = `LV ${lv}`
+
+  // ── Champion stats (HP, resources, combat stats — these ARE on activePlayer) ──
+  const cs2  = ap?.championStats ?? {}
+  const hp      = Math.round(cs2.currentHealth      ?? 0)
+  const hpMax   = Math.round(cs2.maxHealth          ?? 1)
+  const mp      = Math.round(cs2.resourceValue      ?? 0)
+  const mpMax   = Math.round(cs2.resourceMax        ?? 1)
+  const mpType  = (cs2.resourceType ?? 'MANA').toUpperCase()
+  const adVal   = Math.round(cs2.attackDamage       ?? 0)
+  const apVal   = Math.round(cs2.abilityPower       ?? 0)
+  const arVal   = Math.round(cs2.armor              ?? 0)
+  const mrVal   = Math.round(cs2.magicResist        ?? 0)
+  const msVal   = Math.round(cs2.moveSpeed          ?? 0)
+  const critVal = Math.round((cs2.critChance        ?? 0) * 100)
 
   // ── Animate KDA ──
   gsapNum($('st-k'),   k)
@@ -256,6 +284,7 @@ function renderTeam(container, players, isEnemy, patch) {
 
     const row = document.createElement('div')
     row.className = `prow ${cls}${dead ? ' dead' : ''}`
+    row.dataset.name = p.summonerName ?? ''
 
     const img = document.createElement('img')
     img.className = 'prow-icon'
@@ -267,6 +296,8 @@ function renderTeam(container, players, isEnemy, patch) {
     left.className = 'prow-left'
     const subParts = []
     if (isMe) subParts.push('<span style="color:var(--gold);font-weight:700">YOU</span>')
+    const rbadge = rankBadgeHtml(p.summonerName)
+    if (rbadge) subParts.push(rbadge)
     if (pos)  subParts.push(pos)
     subParts.push(`Lv${lv}`)
     if (dead && resp > 0) subParts.push(`<span class="prow-dead">💀 ${resp}s</span>`)
@@ -302,8 +333,12 @@ function showAdviceLoading() {
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 function closeMe() {
-  if (typeof overwolf !== 'undefined')
-    overwolf.windows.getCurrentWindow(r => { if (r.status === 'success') overwolf.windows.close(r.window.id) })
+  if (typeof overwolf === 'undefined') return
+  try {
+    const bg = overwolf.windows.getMainWindow()
+    if (bg && typeof bg.hideOverlay === 'function') { bg.hideOverlay(); return }
+  } catch {}
+  overwolf.windows.getCurrentWindow(r => { if (r.status === 'success') overwolf.windows.close(r.window.id) })
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -316,12 +351,56 @@ if (typeof overwolf !== 'undefined' && overwolf.windows) {
     if (c.type === 'game-data')    renderGame(c.data)
     if (c.type === 'ai-advice')    showAdvice(c.advice)
     if (c.type === 'ai-loading')   showAdviceLoading()
+    if (c.type === 'rank-update') {
+      playerRanks = { ...playerRanks, ...c.ranks }
+      // Patch rank badges in already-rendered rows without full re-render
+      document.querySelectorAll('.prow').forEach(row => {
+        const name = row.dataset.name
+        if (!name) return
+        const sub  = row.querySelector('.prow-sub')
+        if (!sub) return
+        const existing = sub.querySelector('.rank-badge')
+        const newBadge = rankBadgeHtml(name)
+        if (!newBadge) return
+        if (existing) existing.outerHTML = newBadge
+        else if (sub.firstChild) sub.insertAdjacentHTML('afterbegin', newBadge + ' · ')
+      })
+    }
     if (typeof c.advice === 'string') showAdvice(c.advice)
   })
 }
 
+// Poll live game data via the backend proxy.
+// Regular fetch() to localhost:4000 works from any Overwolf window (no special permission needed).
+// The backend proxies http://127.0.0.1:2999 and adds CORS headers for overwolf-extension:// origins.
+const LIVE_URL = 'http://localhost:4000/api/lcu-proxy/game-data'
+if (typeof overwolf !== 'undefined') {
+  function pollLiveClient() {
+    fetch(LIVE_URL)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data && !data.error) renderGame(data) })
+      .catch(() => {})
+  }
+  pollLiveClient()
+  setInterval(pollLiveClient, 2000)
+}
+// IPC from background.js still delivers rank badges and AI advice on top of live data.
+
 // ── Dev mode ──────────────────────────────────────────────────────────────────
 if (typeof overwolf === 'undefined') {
+  // Seed mock ranks for preview
+  playerRanks = {
+    'TestSummoner': { tier: 'GOLD',      division: 2, lp: 47 },
+    'Ally1':        { tier: 'PLATINUM',  division: 4, lp: 12 },
+    'Ally2':        { tier: 'DIAMOND',   division: 2, lp: 88 },
+    'Ally3':        { tier: 'SILVER',    division: 1, lp: 65 },
+    'Ally4':        { tier: 'EMERALD',   division: 3, lp: 30 },
+    'Enemy1':       { tier: 'GOLD',      division: 1, lp: 75 },
+    'Enemy2':       { tier: 'SILVER',    division: 3, lp: 20 },
+    'Enemy3':       { tier: 'MASTER',    division: null, lp: 412 },
+    'Enemy4':       { tier: 'CHALLENGER',division: null, lp: 1204 },
+    'Enemy5':       { tier: 'DIAMOND',   division: 1, lp: 55 },
+  }
   setTimeout(() => renderGame({
     gameData: { gameTime: 1142, gameMode: 'CLASSIC' },
     activePlayer: {

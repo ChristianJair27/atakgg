@@ -26,19 +26,15 @@
     animation:spin .9s linear infinite;
     margin-top:4px;
   }
-  #status{font-size:12px;color:rgba(255,255,255,.3);letter-spacing:.04em;min-height:18px}
-  #err-box{display:none;text-align:center;max-width:340px}
-  #err-box p{font-size:12px;color:rgba(255,255,255,.45);line-height:1.7;margin-bottom:14px}
-  #err-box code{font-size:11px;background:rgba(255,255,255,.06);padding:3px 8px;border-radius:4px;color:rgba(255,255,255,.6)}
+  #status{font-size:12px;color:rgba(255,255,255,.3);letter-spacing:.04em;min-height:18px;text-align:center}
+  #hint{display:none;text-align:center;max-width:320px;margin-top:4px}
+  #hint p{font-size:11px;color:rgba(255,255,255,.3);line-height:1.7;margin-bottom:14px}
   .btn{
     display:inline-block;padding:10px 22px;border:none;cursor:pointer;border-radius:8px;
     font-size:12px;font-weight:700;letter-spacing:.1em;color:#fff;
     background:linear-gradient(135deg,#ef4444,#b91c1c);transition:.18s;
   }
   .btn:hover{background:linear-gradient(135deg,#f87171,#ef4444)}
-  .btn-ghost{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);margin-left:8px}
-  .btn-ghost:hover{background:rgba(255,255,255,.12)}
-  /* radial bg */
   body::before{
     content:'';position:fixed;inset:0;pointer-events:none;
     background:radial-gradient(ellipse 700px 400px at 50% 0%,rgba(239,68,68,.1),transparent);
@@ -58,14 +54,10 @@
   <div id="title">ATAK</div>
   <div id="sub">AI COACH</div>
   <div id="spinner"></div>
-  <div id="status">Iniciando...</div>
-  <div id="err-box">
-    <p>No se pudo conectar con el servidor local ni con la versión en línea.</p>
-    <p>Asegúrate de que el servidor de desarrollo esté corriendo:<br><code>npm run dev</code></p>
-    <div style="margin-top:8px">
-      <button class="btn" onclick="tryProd()">Abrir atakgg.revolution505.com</button>
-      <button class="btn btn-ghost" onclick="tryDev()">Reintentar localhost</button>
-    </div>
+  <div id="status">Buscando tu perfil...</div>
+  <div id="hint">
+    <p>Abre League of Legends para que ATAK<br>detecte tu invocador automáticamente.</p>
+    <button class="btn" onclick="openRoot()">Abrir sin perfil</button>
   </div>
   <iframe id="app-frame" allow="clipboard-read; clipboard-write" allowfullscreen></iframe>
 
@@ -73,75 +65,66 @@
 const DEV  = 'http://localhost:8080'
 const PROD = 'https://atakgg.revolution505.com'
 
-const status  = document.getElementById('status')
-const errBox  = document.getElementById('err-box')
-const spinner = document.getElementById('spinner')
-const frame   = document.getElementById('app-frame')
+const statusEl  = document.getElementById('status')
+const hintEl    = document.getElementById('hint')
+const spinnerEl = document.getElementById('spinner')
+const frame     = document.getElementById('app-frame')
 
-let frameLoading = false
-
-function setStatus(msg) { status.textContent = msg }
+let navigated = false
+let hintTimer = null
 
 frame.addEventListener('load', () => {
-  if (!frameLoading) return
+  if (!navigated) return
   frame.style.display = 'block'
-  ;['gem','title','sub','spinner','status','err-box'].forEach(id => {
+  ;['gem','title','sub','spinner','status','hint'].forEach(id => {
     const el = document.getElementById(id)
     if (el) el.style.display = 'none'
   })
 })
 
 function navigateTo(url) {
-  setStatus('Cargando ' + url + '...')
-  frameLoading = true
+  if (navigated) return
+  navigated = true
+  if (hintTimer) { clearTimeout(hintTimer); hintTimer = null }
+  statusEl.textContent = 'Cargando perfil...'
   frame.src = url
 }
 
-function tryProd() {
-  errBox.style.display = 'none'
-  spinner.style.display = 'block'
-  navigateTo(PROD)
+// Fallback: open the app root without navigating to a specific profile
+function openRoot() {
+  navigated = true
+  if (hintTimer) { clearTimeout(hintTimer); hintTimer = null }
+  hintEl.style.display = 'none'
+  spinnerEl.style.display = 'block'
+  statusEl.textContent = 'Abriendo...'
+  // Try dev server first, then prod
+  fetch(DEV + '/', { mode: 'no-cors', signal: AbortSignal.timeout(1500) })
+    .then(() => { frame.src = DEV })
+    .catch(() => { frame.src = PROD })
 }
 
-function tryDev() {
-  errBox.style.display = 'none'
-  spinner.style.display = 'block'
-  run()
+// Listen for the profile URL from background.js
+if (typeof overwolf !== 'undefined') {
+  overwolf.windows.onMessageReceived.addListener(msg => {
+    const d = msg?.content
+    if (d?.type === 'summoner-profile-url' && d?.url) {
+      statusEl.textContent = 'Perfil encontrado ✓'
+      navigateTo(d.url)
+    }
+  })
 }
 
-async function run() {
-  // 1. Try dev server (fast — 1.5s timeout)
-  setStatus('Buscando servidor de desarrollo...')
-  try {
-    await fetch(DEV + '/', {
-      mode: 'no-cors',
-      signal: AbortSignal.timeout(1500),
-    })
-    // If we reach here without throwing, dev server is up
-    setStatus('Servidor de desarrollo encontrado ✓')
-    setTimeout(() => navigateTo(DEV), 200)
-    return
-  } catch {}
+// Update status text while waiting to reassure the user
+setTimeout(() => { if (!navigated) statusEl.textContent = 'Conectando a League of Legends...' }, 3000)
+setTimeout(() => { if (!navigated) statusEl.textContent = 'Esperando que abras el cliente...' }, 10000)
 
-  // 2. Fall back to production
-  setStatus('Conectando a atakgg.revolution505.com...')
-  try {
-    const r = await fetch(PROD + '/', {
-      mode: 'no-cors',
-      signal: AbortSignal.timeout(4000),
-    })
-    setStatus('Conectado ✓')
-    setTimeout(() => navigateTo(PROD), 200)
-    return
-  } catch {}
-
-  // 3. Both failed — show error UI
-  spinner.style.display = 'none'
-  setStatus('No se pudo conectar')
-  errBox.style.display = 'block'
-}
-
-run()
+// After 30s show the "open without profile" option as fallback
+hintTimer = setTimeout(() => {
+  if (navigated) return
+  spinnerEl.style.display = 'none'
+  statusEl.textContent = 'Liga no detectada'
+  hintEl.style.display = 'block'
+}, 30000)
 </script>
 </body>
 </html>

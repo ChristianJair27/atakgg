@@ -57,8 +57,38 @@ function KataModel({ autoRotate = true }: { autoRotate?: boolean }) {
   );
 }
 
+function isWebGLAvailable(): boolean {
+  try {
+    const canvas = document.createElement('canvas');
+    return !!(
+      window.WebGLRenderingContext &&
+      (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function NoWebGLFallback({ size = 220 }: { size?: number }) {
+  const spinSize = Math.round(size * 0.28);
+  return (
+    <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{
+        width: spinSize,
+        height: spinSize,
+        borderRadius: '50%',
+        border: '3px solid rgba(255,255,255,0.08)',
+        borderTopColor: RED,
+        animation: 'kata-spin 0.9s linear infinite',
+      }} />
+      <style>{`@keyframes kata-spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 // ─── The 3D canvas (transparent) ──────────────────────────────────────────────
 function KataCanvas({ size = 220 }: { size?: number }) {
+  if (!isWebGLAvailable()) return <NoWebGLFallback size={size} />;
   return (
     <div style={{ width: size, height: size }}>
       <Canvas
@@ -71,7 +101,6 @@ function KataCanvas({ size = 220 }: { size?: number }) {
         <directionalLight position={[3, 5, 4]} intensity={1.25} />
         <directionalLight position={[-4, 2, -3]} intensity={0.45} color={RED} />
         <Suspense fallback={null}>
-          {/* Center + Bounds auto-fit the model regardless of its native scale. */}
           <Bounds fit clip observe margin={1.15}>
             <Center>
               <KataModel />

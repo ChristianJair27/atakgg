@@ -1,916 +1,752 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="UTF-8">
 <title>ATAK — Champ Select</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="atak-loader.css">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{width:800px;height:590px;overflow:hidden;user-select:none}
-:root{
-  --gold:#c89b3c;--goldlt:#f0e6d3;--golddm:#9a7b3a;
-  --teal:#0bc4e3;--red:#f87171;--green:#34d399;--purple:#c4b5fd;
-  --ink:rgba(8,9,12,.55);
-  --r:16px;
-  --heading:'Instrument Serif',Georgia,serif;
-  --body:'Barlow',system-ui,sans-serif;
-}
-body{
-  font-family:var(--body);font-weight:400;color:#fff;
-  /* Translucent cinematic veil — game visible behind the panels */
-  background:
-    radial-gradient(ellipse 70% 45% at 50% -8%,rgba(255,255,255,.05),transparent 60%),
-    radial-gradient(ellipse 60% 45% at 85% 110%,rgba(200,155,60,.05),transparent 55%),
-    linear-gradient(175deg,rgba(2,3,6,.30) 0%,rgba(2,3,6,.42) 100%);
-}
+html,body{width:1120px;height:760px;overflow:hidden;user-select:none;font-family:'Segoe UI',system-ui,sans-serif}
+body{background:#111214;color:#e8e8ea;display:flex;flex-direction:column}
 ::-webkit-scrollbar{width:3px}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:3px}
-
-/* ── Liquid glass ── */
-.g{
-  background:var(--ink);background-blend-mode:luminosity;
-  backdrop-filter:blur(16px) saturate(150%);-webkit-backdrop-filter:blur(16px) saturate(150%);
-  border-radius:var(--r);position:relative;overflow:hidden;
-  box-shadow:0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(255,255,255,.10);
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:3px}
+:root{
+  --red:#ef4444;--redlt:#f87171;--teal:#0bc4e3;--gold:#c8aa6e;
+  --green:#4ade80;--bg:#111214;--surface:rgba(255,255,255,.05);
+  --border:rgba(255,255,255,.08);--txt2:rgba(255,255,255,.45);
 }
-/* Signature gradient-stroke border via masked ::before */
-.g::before{
-  content:'';position:absolute;inset:0;border-radius:inherit;padding:1.4px;
-  background:linear-gradient(180deg,
-    rgba(255,255,255,.45) 0%, rgba(255,255,255,.14) 20%,
-    rgba(255,255,255,0) 42%, rgba(255,255,255,0) 58%,
-    rgba(255,255,255,.14) 80%, rgba(255,255,255,.45) 100%);
-  -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;
+
+/* ── TITLEBAR ── */
+#titlebar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 14px;height:36px;flex-shrink:0;
+  background:rgba(0,0,0,.55);border-bottom:1px solid rgba(255,255,255,.05);
+  -webkit-app-region:drag;
 }
-.g.gold-top{box-shadow:0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(200,155,60,.18)}
-.g.teal-top{box-shadow:0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(11,196,227,.18)}
-.g.red-top{box-shadow:0 8px 28px rgba(0,0,0,.38), inset 0 1px 1px rgba(248,113,113,.18)}
-
-/* ── Blur-in entrance ── */
-@keyframes blurIn{from{filter:blur(10px);opacity:0;transform:translateY(12px)}to{filter:blur(0);opacity:1;transform:translateY(0)}}
-#teams-panel{animation:blurIn .55s cubic-bezier(.2,.7,.2,1) both}
-#tab-bar{animation:blurIn .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:.08s}
-#content-area{animation:blurIn .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:.14s}
-
-#root{display:flex;flex-direction:column;height:100vh;gap:5px;padding:7px}
-
-/* ── Header ── */
-#header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;-webkit-app-region:drag}
 #brand{display:flex;align-items:center;gap:7px}
-#brand-gem{width:20px;height:20px;flex-shrink:0;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);background:linear-gradient(135deg,var(--gold),var(--golddm));display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:#010a13}
-#brand-name{font-size:12px;font-weight:800;letter-spacing:.07em;color:var(--gold)}
-#brand-sep{width:2px;height:2px;border-radius:50%;background:rgba(200,155,60,.3)}
-#brand-sub{font-size:7px;font-weight:700;letter-spacing:.25em;color:var(--golddm)}
-#header-mid{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px}
-#phase-tag{font-size:8px;font-weight:700;letter-spacing:.22em;color:var(--teal);padding:2px 10px;background:rgba(11,196,227,.07);border:1px solid rgba(11,196,227,.2);border-radius:20px}
-#timer-wrap{display:flex;align-items:center;gap:5px}
-#timer-num{font-family:monospace;font-size:15px;font-weight:900;color:var(--goldlt);min-width:24px;text-align:center}
-#timer-bar{width:40px;height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
-#timer-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--gold),var(--teal));transition:width .5s linear}
-#close-btn{-webkit-app-region:no-drag;width:22px;height:22px;border-radius:6px;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;color:rgba(255,255,255,.3);transition:.15s}
-#close-btn:hover{background:rgba(239,68,68,.15);color:var(--red)}
+#brand-gem{width:18px;height:18px;border-radius:4px;background:linear-gradient(135deg,var(--red),#b91c1c);
+  display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff}
+#brand-name{font-size:11px;font-weight:800;letter-spacing:.09em;color:rgba(255,255,255,.7)}
+#brand-dot{width:2px;height:2px;border-radius:50%;background:rgba(255,255,255,.2)}
+#brand-sub{font-size:7px;font-weight:700;letter-spacing:.28em;color:var(--teal)}
+#header-center{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px}
+#patch-lbl{font-size:9px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.25)}
+.wbtn{width:22px;height:22px;border:none;cursor:pointer;border-radius:5px;background:transparent;
+  color:rgba(255,255,255,.35);font-size:12px;transition:.12s;-webkit-app-region:no-drag;
+  display:flex;align-items:center;justify-content:center}
+.wbtn:hover{background:rgba(255,255,255,.07);color:#fff}
+#wbtn-close:hover{background:rgba(239,68,68,.15);color:var(--redlt)}
+#winbtns{display:flex;gap:1px;-webkit-app-region:no-drag}
 
-/* ── Teams panel ── */
-#teams-panel{flex-shrink:0;padding:8px 12px}
-.teams-layout{display:grid;grid-template-columns:1fr auto 1fr;align-items:start}
-.team-col{display:flex;flex-direction:column;gap:6px}
-.team-col.enemy{align-items:flex-end}
-.team-hdr{display:flex;align-items:center;gap:4px;font-size:7px;font-weight:700;letter-spacing:.2em}
-.team-col.enemy .team-hdr{flex-direction:row-reverse}
-.th-ally{color:var(--teal)}.th-enemy{color:var(--red)}
-.th-dot{width:4px;height:4px;border-radius:50%;flex-shrink:0}
-.th-ally .th-dot{background:var(--teal)}.th-enemy .th-dot{background:var(--red)}
-.champs-row{display:flex;gap:3px}
-.team-col.enemy .champs-row{flex-direction:row-reverse}
-/* Champ slot */
-.cslot{
-  position:relative;flex-shrink:0;width:50px;height:50px;
+/* ── PHASE STEPPER ── */
+#phase-bar{
+  display:flex;align-items:center;justify-content:center;
+  height:38px;flex-shrink:0;gap:0;padding:0 40px;
+  background:rgba(0,0,0,.35);border-bottom:1px solid var(--border);
+  position:relative;
+}
+#timer-badge{
+  position:absolute;right:16px;
+  font-size:13px;font-weight:900;font-variant-numeric:tabular-nums;
+  color:var(--gold);letter-spacing:-.01em;
+}
+.phase-step{display:flex;align-items:center;gap:0}
+.ps-label{font-size:9px;font-weight:700;letter-spacing:.15em;color:rgba(255,255,255,.3);white-space:nowrap;transition:.2s}
+.ps-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15);flex-shrink:0;margin:0 8px;transition:.3s}
+.ps-line{height:1px;width:48px;background:rgba(255,255,255,.1);flex-shrink:0;transition:.3s}
+.ps-step.active .ps-label{color:var(--teal)}
+.ps-step.active .ps-dot{background:var(--teal);box-shadow:0 0 6px rgba(11,196,227,.7)}
+.ps-step.done .ps-label{color:rgba(255,255,255,.5)}
+.ps-step.done .ps-dot{background:rgba(11,196,227,.4)}
+.ps-step.done .ps-line{background:rgba(11,196,227,.3)}
+
+/* ── MAIN BODY ── */
+#main{display:flex;flex:1;overflow:hidden;min-height:0}
+
+/* ── TEAM COLUMNS ── */
+.team-col{
+  width:290px;flex-shrink:0;display:flex;flex-direction:column;
+  background:rgba(0,0,0,.28);border-right:1px solid var(--border);
+  padding:12px 12px 0;gap:7px;overflow:hidden;
+}
+.team-col.enemy{border-right:none;border-left:1px solid var(--border)}
+.col-hdr{display:flex;align-items:center;gap:7px;font-size:9px;font-weight:800;letter-spacing:.22em;padding:0 2px;margin-bottom:3px}
+.col-hdr-dot{width:7px;height:7px;border-radius:50%}
+.ally-dot{background:var(--teal);box-shadow:0 0 6px rgba(11,196,227,.5)}
+.enemy-dot{background:var(--red);box-shadow:0 0 6px rgba(239,68,68,.5)}
+.col-hdr-txt{color:rgba(255,255,255,.5)}
+
+/* Ban row */
+.bans-wrap{display:flex;align-items:center;gap:4px;padding:0 2px}
+.bslot{
+  width:40px;height:40px;border-radius:6px;overflow:hidden;flex-shrink:0;
   background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
-  border-radius:8px;overflow:hidden;cursor:pointer;
-  transition:border-color .2s,box-shadow .2s,transform .15s;
+  position:relative;
 }
-.cslot:hover{transform:scale(1.07);border-color:rgba(255,255,255,.18)}
-.cslot img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
-.cslot .cgrad{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 55%);pointer-events:none}
-.cslot .cpos{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:6px;font-weight:700;letter-spacing:.08em;color:rgba(255,255,255,.65)}
-.cslot.empty{border-color:rgba(255,255,255,.04);cursor:default}
-.cslot.empty:hover{transform:none;border-color:rgba(255,255,255,.04)}
-.cslot.empty::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(-45deg,rgba(255,255,255,.012) 0,rgba(255,255,255,.012) 1px,transparent 1px,transparent 8px)}
-.cslot.locked{border-color:rgba(200,155,60,.5);box-shadow:0 0 8px rgba(200,155,60,.12)}
-.cslot.me{border-color:var(--teal);box-shadow:0 0 12px rgba(11,196,227,.22)}
-.cslot.acting{border-color:rgba(11,196,227,.6);animation:cpulse 1.1s ease-in-out infinite}
-@keyframes cpulse{0%,100%{box-shadow:0 0 4px rgba(11,196,227,.2)}50%{box-shadow:0 0 14px rgba(11,196,227,.5)}}
-.cslot.selected{border-color:var(--gold)!important;box-shadow:0 0 14px rgba(200,155,60,.3)!important;z-index:2}
-.cslot.new-pick{animation:cpop .28s cubic-bezier(.34,1.56,.64,1) both}
-@keyframes cpop{from{opacity:0;transform:scale(.72)}to{opacity:1;transform:scale(1)}}
-/* Bans */
-.bans-row{display:flex;align-items:center;gap:2px}
-.team-col.enemy .bans-row{flex-direction:row-reverse}
-.ban-lbl{font-size:6px;letter-spacing:.15em;color:rgba(200,155,60,.3);margin-right:4px}
-.team-col.enemy .ban-lbl{margin-right:0;margin-left:4px}
-.bslot{width:22px;height:22px;border-radius:4px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);position:relative;overflow:hidden;flex-shrink:0}
-.bslot img{width:100%;height:100%;object-fit:cover;filter:grayscale(80%) brightness(.4)}
-.bslot.filled::after{content:'✕';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:rgba(239,68,68,.45);background:rgba(239,68,68,.07)}
-.bslot.empty{opacity:.2}
-/* VS */
-#vs-col{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;margin:0 10px}
-.vs-bar{width:1px;height:20px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.06),transparent)}
-.vs-txt{font-size:7px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.12)}
+.bslot img{width:100%;height:100%;object-fit:cover;filter:grayscale(55%) brightness(.55)}
+.bslot.filled::after{
+  content:'✕';position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:900;color:rgba(239,68,68,.7);
+  background:rgba(239,68,68,.1);
+}
+.bslot.empty{opacity:.25}
 
-/* ── Tab bar ── */
-#tab-bar{
-  flex-shrink:0;display:flex;gap:3px;padding:0 2px;
+/* Pick slots */
+.pslot{
+  display:flex;align-items:center;gap:10px;padding:7px 8px;
+  border-radius:10px;border:1px solid var(--border);
+  background:rgba(255,255,255,.03);transition:.18s;cursor:pointer;
+  position:relative;overflow:hidden;
 }
+.pslot:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16)}
+.pslot.me{border-color:rgba(11,196,227,.5);background:rgba(11,196,227,.07)}
+.pslot.acting{border-color:rgba(11,196,227,.8);animation:pulse 1.2s ease-in-out infinite}
+.pslot.locked.me{border-color:rgba(11,196,227,.65)}
+.pslot.locked.enemy-pick{border-color:rgba(239,68,68,.45)}
+@keyframes pulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 18px rgba(11,196,227,.4)}}
+.pslot-portrait{
+  width:64px;height:64px;border-radius:9px;overflow:hidden;flex-shrink:0;
+  background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.1);
+  box-shadow:0 2px 12px rgba(0,0,0,.4);
+}
+.pslot-portrait img{width:100%;height:100%;object-fit:cover;display:block}
+.pslot-portrait.empty-port{display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.1)}
+.pslot-portrait.empty-port::before{content:'⬡';font-size:24px}
+.pslot-info{flex:1;min-width:0}
+.pslot-name{font-size:14px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.1}
+.pslot-sub{font-size:10px;color:var(--txt2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.tier-badge{
+  font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;flex-shrink:0;
+  background:rgba(200,168,78,.12);border:1px solid rgba(200,168,78,.28);color:var(--gold);
+}
+.tier-badge.good{background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.28);color:var(--green)}
+.tier-badge.bad{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.22);color:var(--redlt)}
+.pos-tag{font-size:7px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.55);
+  padding:2px 5px;border-radius:4px;background:rgba(255,255,255,.07)}
+
+/* Enemy column flipped */
+.team-col.enemy .pslot{flex-direction:row-reverse}
+.team-col.enemy .pslot-info{text-align:right}
+.team-col.enemy .pslot-sub{justify-content:flex-end}
+
+/* ── CENTER PANEL ── */
+#center{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+#tabs{display:flex;height:40px;border-bottom:1px solid var(--border);flex-shrink:0}
 .tab{
-  flex:1;padding:6px 0;text-align:center;
-  font-size:7.5px;font-weight:700;letter-spacing:.2em;
-  color:rgba(255,255,255,.3);
-  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);
-  border-radius:7px;cursor:pointer;transition:.18s;
-  display:flex;align-items:center;justify-content:center;gap:5px;
+  flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:11px;font-weight:700;letter-spacing:.08em;
+  color:rgba(255,255,255,.35);cursor:pointer;transition:.15s;
+  border-bottom:2px solid transparent;
 }
-.tab:hover{color:rgba(255,255,255,.55);background:rgba(255,255,255,.05)}
-.tab.active{color:var(--gold);background:rgba(200,155,60,.07);border-color:rgba(200,155,60,.25)}
-.tab-dot{width:4px;height:4px;border-radius:50%;background:currentColor;flex-shrink:0}
+.tab:hover{color:rgba(255,255,255,.65);background:rgba(255,255,255,.03)}
+.tab.active{color:#fff;border-bottom-color:var(--teal)}
+.tab-icon{width:14px;height:14px;opacity:.6}
+#content-area{flex:1;overflow:hidden;position:relative}
+.cpanel{position:absolute;inset:0;overflow-y:auto;padding:14px 16px;display:none}
+.cpanel.active{display:block}
 
-/* ── Content area ── */
-#content-area{flex:1;overflow:hidden;position:relative;min-height:0}
-.panel{position:absolute;inset:0;display:flex;flex-direction:column;gap:0;opacity:0;pointer-events:none;transition:opacity .22s}
-.panel.active{opacity:1;pointer-events:all}
-
-/* ──── PANEL: YOUR PICK ──── */
-#panel-pick{padding:2px 0;flex-direction:row;gap:12px}
-/* No pick state */
-#no-pick{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
-.np-orb{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 40% 35%,rgba(200,155,60,.12),rgba(200,155,60,.02));border:1px solid rgba(200,155,60,.15);display:flex;align-items:center;justify-content:center;font-size:14px;color:rgba(200,155,60,.22);animation:float2 4s ease-in-out infinite}
-@keyframes float2{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-#np-t{font-size:8px;font-weight:700;letter-spacing:.25em;color:rgba(200,155,60,.32)}
-#np-s{font-size:7.5px;color:rgba(255,255,255,.16);text-align:center;line-height:1.8}
-/* Pick active */
-#pick-card{display:none;flex:1;gap:12px;overflow:hidden}
-#pick-left{flex-shrink:0;width:82px;display:flex;flex-direction:column;gap:7px}
-#portrait-wrap{position:relative;border-radius:9px;overflow:hidden;border:1.5px solid rgba(200,155,60,.35);box-shadow:0 0 18px rgba(200,155,60,.1)}
-#pick-img{width:82px;height:82px;object-fit:cover;display:block}
-#pick-img-shade{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.65) 0%,transparent 50%)}
-#lock-badge{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:5.5px;font-weight:800;letter-spacing:.2em;padding:2px;background:rgba(11,196,227,.9);color:#010a13;display:none}
-#lock-badge.on{display:block}
-#pick-winrate{text-align:center;padding:4px;background:rgba(255,255,255,.04);border:1px solid rgba(200,155,60,.2);border-radius:7px;font-size:13px;font-weight:900;color:var(--gold)}
-#pick-winrate-lbl{font-size:5.5px;letter-spacing:.18em;color:var(--golddm);font-weight:700;margin-top:1px}
-.side-stat{display:flex;justify-content:space-between;align-items:center;padding:0 1px}
-.ss-lbl{font-size:6px;color:rgba(255,255,255,.22);letter-spacing:.1em}
-.ss-val{font-size:8px;font-weight:700;color:rgba(255,255,255,.65)}
-#pick-right{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0;overflow:hidden}
-#champ-name-row{display:flex;align-items:center;gap:7px}
-#pick-champ-name{font-size:22px;font-weight:900;color:#fff;letter-spacing:-.02em;line-height:1}
-#pick-role-tag{font-size:6.5px;font-weight:700;letter-spacing:.2em;color:var(--teal);padding:2px 8px;border-radius:20px;background:rgba(11,196,227,.07);border:1px solid rgba(11,196,227,.2);flex-shrink:0}
-#pick-tip{font-size:9px;line-height:1.68;color:rgba(255,255,255,.42);font-style:italic;padding:6px 9px;background:rgba(200,155,60,.04);border-left:2px solid rgba(200,155,60,.28);border-radius:0 5px 5px 0}
-#pick-tip.loading{color:rgba(255,255,255,.16)}
-.sec-lbl{display:flex;align-items:center;gap:4px;font-size:6.5px;font-weight:700;letter-spacing:.25em;color:rgba(200,155,60,.42);margin-bottom:4px}
-.sec-lbl::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.05)}
-#keystone-row{display:flex;align-items:center;gap:6px;margin-bottom:3px}
-#keystone-icon{width:26px;height:26px;border-radius:50%;flex-shrink:0;border:1.5px solid rgba(200,155,60,.3);background:rgba(255,255,255,.04);object-fit:contain}
-#keystone-name{font-size:10px;font-weight:700;color:rgba(255,255,255,.82)}
-#rune-path-icon{width:13px;height:13px;opacity:.4;object-fit:contain;margin-left:auto}
-#sub-runes{display:flex;gap:3px;align-items:center}
-.rune-sm{width:17px;height:17px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)}
-.item-line{display:flex;align-items:center;gap:5px;margin-bottom:3px}
-.il-lbl{font-size:6px;letter-spacing:.1em;color:rgba(255,255,255,.22);width:34px;flex-shrink:0}
-.items-row{display:flex;gap:2px;flex-wrap:wrap}
-.iico{width:28px;height:28px;border-radius:5px;flex-shrink:0;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);object-fit:cover;transition:transform .14s,box-shadow .14s}
-.iico:hover{transform:scale(1.28);box-shadow:0 4px 12px rgba(0,0,0,.55);z-index:20;position:relative}
-.iico.boots{border-color:rgba(11,196,227,.22)}
-
-/* ──── PANEL: INSPECT ──── */
-#panel-inspect{flex-direction:row;gap:10px;padding:2px 0}
-/* No selection placeholder */
-#inspect-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:rgba(255,255,255,.14);font-size:8px;letter-spacing:.2em;font-weight:700}
-/* Inspect content */
-#inspect-content{display:none;flex:1;gap:10px;overflow:hidden}
-/* Left: champ info */
-#inspect-champ{flex-shrink:0;width:200px;display:flex;flex-direction:column;gap:7px}
-#ins-portrait-wrap{position:relative;border-radius:9px;overflow:hidden;height:90px;flex-shrink:0}
-#ins-portrait{width:100%;height:90px;object-fit:cover;object-position:top;display:block}
-#ins-shade{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.75) 0%,transparent 50%)}
-#ins-champ-name{position:absolute;bottom:5px;left:8px;font-size:14px;font-weight:900;color:#fff}
-#ins-role{position:absolute;bottom:5px;right:7px;font-size:6px;font-weight:700;letter-spacing:.18em;color:var(--teal);background:rgba(11,196,227,.15);padding:1px 5px;border-radius:3px}
-#ins-winrate-row{display:flex;align-items:center;gap:7px}
-#ins-wr{font-size:18px;font-weight:900;color:var(--gold)}
-#ins-wr-lbl{font-size:6px;letter-spacing:.12em;color:var(--golddm)}
-#ins-tier{font-size:7px;font-weight:700;letter-spacing:.12em;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:rgba(255,255,255,.5)}
-#ins-keystone-row{display:flex;align-items:center;gap:5px}
-#ins-keystone-icon{width:24px;height:24px;border-radius:50%;border:1px solid rgba(200,155,60,.3);background:rgba(255,255,255,.04);object-fit:contain;flex-shrink:0}
-#ins-keystone-name{font-size:9.5px;font-weight:700;color:rgba(255,255,255,.8)}
-#ins-sub-runes{display:flex;gap:2px}
-.ins-rune{width:15px;height:15px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.04)}
-.ins-items{display:flex;gap:3px;flex-wrap:wrap}
-.ins-iico{width:26px;height:26px;border-radius:5px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);object-fit:cover;transition:transform .14s}
-.ins-iico:hover{transform:scale(1.3);z-index:20;position:relative}
-/* Right: player info */
-#inspect-player{flex:1;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
-#pl-header{display:flex;align-items:center;gap:8px}
-#pl-name{font-size:15px;font-weight:800;color:#fff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rank-badge{
-  flex-shrink:0;display:flex;flex-direction:column;align-items:center;
-  padding:4px 10px;border-radius:7px;
-  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
-  min-width:56px;
+/* ── Builds panel ── */
+#waiting-pick{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;gap:10px;color:rgba(255,255,255,.25);
 }
-.rank-tier{font-size:11px;font-weight:900;letter-spacing:.04em}
-.rank-tier.challenger{color:#f0c060}
-.rank-tier.grandmaster{color:#f87171}
-.rank-tier.master{color:#a78bfa}
-.rank-tier.diamond{color:#60a5fa}
-.rank-tier.emerald{color:#4ade80}
-.rank-tier.platinum{color:#2dd4bf}
-.rank-tier.gold{color:var(--gold)}
-.rank-tier.silver{color:#94a3b8}
-.rank-tier.bronze{color:#b87340}
-.rank-tier.iron{color:#7f7f7f}
-.rank-tier.unranked{color:rgba(255,255,255,.3)}
-.rank-sub{font-size:6px;letter-spacing:.15em;color:rgba(255,255,255,.25);font-weight:700;margin-top:1px}
-.rank-lp{font-size:8px;font-weight:700;color:rgba(255,255,255,.5);margin-top:1px}
-/* Mastery */
-#pl-mastery-row{display:flex;align-items:center;gap:8px;padding:7px 9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px}
-#pl-mastery-lv{font-size:18px;font-weight:900;color:var(--gold)}
-#pl-mastery-lv-lbl{font-size:6px;letter-spacing:.15em;color:var(--golddm)}
-#pl-mastery-pts{font-size:11px;font-weight:700;color:rgba(255,255,255,.65)}
-#pl-mastery-pts-lbl{font-size:6px;color:rgba(255,255,255,.25);letter-spacing:.1em}
-/* Stats grid */
-.pl-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
-.pl-stat{padding:5px 8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:7px}
-.pl-stat-v{font-size:13px;font-weight:800;color:#fff}
-.pl-stat-l{font-size:6px;letter-spacing:.15em;color:rgba(255,255,255,.25);font-weight:700;margin-top:1px}
-.pl-stat.good .pl-stat-v{color:var(--green)}
-.pl-stat.bad  .pl-stat-v{color:var(--red)}
-.pl-stat.gold .pl-stat-v{color:var(--gold)}
-/* Style tags */
-#pl-tags{display:flex;flex-wrap:wrap;gap:4px}
-.pl-tag{font-size:7px;font-weight:700;letter-spacing:.12em;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:rgba(255,255,255,.45)}
-.pl-tag.agg{border-color:rgba(239,68,68,.3);color:rgba(239,68,68,.75);background:rgba(239,68,68,.06)}
-.pl-tag.farm{border-color:rgba(200,155,60,.3);color:rgba(200,155,60,.75);background:rgba(200,155,60,.06)}
-.pl-tag.carry{border-color:rgba(11,196,227,.3);color:rgba(11,196,227,.75);background:rgba(11,196,227,.06)}
-.pl-tag.sup{border-color:rgba(168,85,247,.3);color:rgba(168,85,247,.75);background:rgba(168,85,247,.06)}
-#pl-loading{font-size:8px;color:rgba(255,255,255,.2);font-style:italic;text-align:center;padding:20px 0;animation:shim 1.4s ease-in-out infinite}
-@keyframes shim{0%,100%{opacity:.35}50%{opacity:1}}
-
-/* ──── PANEL: TEAM COMP ──── */
-#panel-comp{flex-direction:column;gap:8px;padding:4px 0;overflow-y:auto}
-.comp-section{flex-shrink:0;padding:10px 12px}
-/* Damage bar */
-#dmg-bar-wrap{display:flex;flex-direction:column;gap:5px}
-.dmg-bar-track{height:14px;border-radius:7px;overflow:hidden;background:rgba(255,255,255,.06);position:relative;display:flex}
-#dmg-ad-fill{height:100%;background:linear-gradient(90deg,#dc7f09,#f59e0b);transition:width .8s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;font-size:7px;font-weight:800;color:rgba(255,255,255,.9)}
-#dmg-ap-fill{height:100%;background:linear-gradient(90deg,#7928ca,#a855f7);flex:1;display:flex;align-items:center;padding-left:5px;font-size:7px;font-weight:800;color:rgba(255,255,255,.9)}
-.dmg-legend{display:flex;justify-content:space-between;font-size:7px;letter-spacing:.1em;font-weight:700}
-.dmg-ad-lbl{color:#f59e0b}.dmg-ap-lbl{color:#a855f7}
-/* Role coverage */
-#role-grid{display:flex;gap:5px}
-.role-slot{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px}
-.role-icon{width:28px;height:28px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.06)}
-.role-champ{font-size:6.5px;font-weight:700;color:rgba(255,255,255,.6);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52px}
-.role-pos{font-size:5.5px;letter-spacing:.12em;color:rgba(255,255,255,.25);font-weight:700}
-.role-slot.filled{border-color:rgba(11,196,227,.2);background:rgba(11,196,227,.04)}
-.role-slot.empty{border-color:rgba(255,255,255,.04);opacity:.4}
-/* Tags */
-#comp-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
-.comp-tag{font-size:7.5px;font-weight:700;letter-spacing:.12em;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:rgba(255,255,255,.5)}
-.comp-tag.engage{border-color:rgba(239,68,68,.35);color:rgba(239,68,68,.8);background:rgba(239,68,68,.07)}
-.comp-tag.poke{border-color:rgba(11,196,227,.35);color:rgba(11,196,227,.8);background:rgba(11,196,227,.07)}
-.comp-tag.teamfight{border-color:rgba(200,155,60,.35);color:rgba(200,155,60,.8);background:rgba(200,155,60,.07)}
-.comp-tag.split{border-color:rgba(168,85,247,.35);color:rgba(168,85,247,.8);background:rgba(168,85,247,.07)}
-.comp-tag.pick{border-color:rgba(34,197,94,.35);color:rgba(34,197,94,.8);background:rgba(34,197,94,.07)}
-/* Comp verdict */
-#comp-verdict{font-size:9px;line-height:1.7;color:rgba(255,255,255,.45);font-style:italic;padding:7px 10px;background:rgba(255,255,255,.03);border-left:2px solid rgba(200,155,60,.25);border-radius:0 5px 5px 0}
-/* Suggested picks */
-#suggested-picks{display:flex;flex-direction:column;gap:6px}
-.sp-row{display:flex;align-items:center;gap:8px}
-.sp-icon{width:32px;height:32px;border-radius:7px;object-fit:cover;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);flex-shrink:0}
-.sp-info{flex:1}
-.sp-name{font-size:10px;font-weight:700;color:rgba(255,255,255,.8)}
-.sp-reason{font-size:7.5px;color:rgba(255,255,255,.3);margin-top:1px}
-.sp-wr{font-size:8px;font-weight:700;color:var(--teal);margin-left:auto;flex-shrink:0}
-/* Threat bar */
-#threat-bar{
-  flex-shrink:0;display:none;align-items:center;gap:6px;padding:4px 10px;
-  background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.12);
-  border-radius:0 0 9px 9px;margin-top:-5px;
+#waiting-pick .wicon{font-size:32px;opacity:.3}
+#waiting-pick .wtxt{font-size:11px;font-weight:600;letter-spacing:.1em}
+#waiting-pick .wsub{font-size:9px;color:rgba(255,255,255,.18)}
+#build-content{display:none}
+.sec-hdr{font-size:8px;font-weight:700;letter-spacing:.25em;color:rgba(255,255,255,.3);
+  margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.sec-hdr::after{content:'';flex:1;height:1px;background:var(--border)}
+.runes-grid{display:flex;gap:8px;align-items:flex-start;margin-bottom:12px}
+.rune-path{display:flex;flex-direction:column;gap:4px;flex:1}
+.keystone-wrap{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.keystone-img{width:40px;height:40px;border-radius:50%;border:1.5px solid rgba(200,168,78,.3);object-fit:contain;background:rgba(255,255,255,.04)}
+.keystone-name{font-size:12px;font-weight:700;color:#fff}
+.keystone-sub{font-size:9px;color:var(--txt2)}
+.rune-row{display:flex;gap:4px}
+.rune-sm{width:22px;height:22px;border-radius:50%;object-fit:contain;background:rgba(255,255,255,.04);border:1px solid var(--border)}
+.items-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.iico{width:34px;height:34px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,.04);object-fit:cover;transition:.14s}
+.iico:hover{transform:scale(1.3);box-shadow:0 4px 14px rgba(0,0,0,.6);z-index:10;position:relative}
+.iico.boots{border-color:rgba(11,196,227,.3)}
+.skill-row{display:flex;gap:3px;flex-wrap:wrap}
+.sk{width:22px;height:22px;border-radius:4px;background:rgba(255,255,255,.07);
+  display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:rgba(255,255,255,.6)}
+.sk.Q{background:rgba(11,196,227,.12);color:var(--teal)}
+.sk.W{background:rgba(74,222,128,.1);color:var(--green)}
+.sk.E{background:rgba(239,68,68,.1);color:var(--redlt)}
+.sk.R{background:rgba(200,168,78,.12);color:var(--gold)}
+.wr-badge{
+  display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;
+  font-size:10px;font-weight:700;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.25);color:var(--green);
 }
-#threat-lbl{font-size:6.5px;font-weight:700;letter-spacing:.2em;color:var(--red);flex-shrink:0}
-#threats-wrap{display:flex;gap:3px;align-items:center;flex-wrap:wrap}
-.tpill{display:flex;align-items:center;gap:3px;padding:2px 6px 2px 3px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.16);border-radius:4px;font-size:7.5px;color:rgba(255,255,255,.7)}
-.tpill img{width:14px;height:14px;border-radius:3px;object-fit:cover}
-#counter-txt{font-size:7.5px;color:rgba(255,255,255,.28);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#counter-txt span{color:var(--teal);font-weight:600}
+.wr-badge.med{background:rgba(200,168,78,.1);border-color:rgba(200,168,78,.25);color:var(--gold)}
+.wr-badge.low{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2);color:var(--redlt)}
+#tips-box{padding:10px 12px;background:rgba(200,168,78,.04);border-left:2px solid rgba(200,168,78,.3);border-radius:0 6px 6px 0;margin-top:6px}
+.tip-item{font-size:10px;line-height:1.65;color:rgba(255,255,255,.55);padding-left:10px;position:relative;margin-bottom:4px}
+.tip-item::before{content:'·';position:absolute;left:0;color:rgba(200,168,78,.4)}
 
-/* ── Cinematic heading typography (Instrument Serif italic) ── */
-#brand-name{font-family:var(--heading);font-style:italic;font-weight:400;font-size:17px;letter-spacing:0;color:#fff}
-#brand-gem{font-family:var(--heading);font-style:italic;border-radius:6px;clip-path:none;background:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.04));color:#fff}
-#timer-num{font-family:var(--heading);font-style:italic;font-weight:400;color:#fff;font-size:18px}
-#pick-champ-name,#ins-champ-name,#pl-name{font-family:var(--heading);font-style:italic;font-weight:400;letter-spacing:-.01em}
-#pick-champ-name{font-size:26px}
-#ins-champ-name{font-size:17px}
-#pl-name{font-size:18px}
-#pick-winrate,#ins-wr,#pl-mastery-lv{font-family:var(--heading);font-style:italic;font-weight:400}
-#pick-winrate{font-size:17px;color:var(--goldlt)}
-#ins-wr{font-size:22px;color:var(--goldlt)}
-#pl-mastery-lv{font-size:22px;color:var(--goldlt)}
-.rank-tier{font-family:var(--heading);font-style:italic;font-weight:400;font-size:14px}
+/* ── Strengths / Weaknesses panel ── */
+.sw-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;height:80%;gap:8px;color:rgba(255,255,255,.2);text-align:center}
+.sw-placeholder .icon{font-size:28px;opacity:.3}
+.sw-placeholder .ttl{font-size:11px;font-weight:600;letter-spacing:.1em}
+.sw-placeholder .sub{font-size:9px;color:rgba(255,255,255,.15)}
+
+/* ── BOTTOM RECS ── */
+#recs{
+  height:200px;flex-shrink:0;display:flex;flex-direction:column;
+  border-top:1px solid var(--border);background:rgba(0,0,0,.35);padding:0;
+}
+#rec-tabs{display:flex;height:36px;border-bottom:1px solid var(--border);flex-shrink:0}
+.rtab{
+  padding:0 18px;display:flex;align-items:center;gap:6px;
+  font-size:9.5px;font-weight:700;letter-spacing:.15em;
+  color:rgba(255,255,255,.3);cursor:pointer;transition:.14s;
+  border-bottom:2px solid transparent;
+}
+.rtab:hover{color:rgba(255,255,255,.65)}
+.rtab.active{color:var(--teal);border-bottom-color:var(--teal)}
+.rtab-dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.7}
+#rec-content{flex:1;overflow:hidden;position:relative}
+.rpanel{position:absolute;inset:0;display:none;align-items:center;padding:10px 16px;gap:0}
+.rpanel.active{display:flex}
+.rec-list{flex:1;display:flex;gap:10px;overflow:hidden;align-items:center}
+.rec-champ{
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  cursor:pointer;transition:.15s;flex-shrink:0;width:80px;
+}
+.rec-champ:hover{transform:translateY(-3px)}
+.rc-img-wrap{position:relative;width:68px;height:68px;border-radius:10px;overflow:hidden;
+  border:2px solid rgba(255,255,255,.12);box-shadow:0 4px 14px rgba(0,0,0,.5);}
+.rc-img-wrap img{width:100%;height:100%;object-fit:cover;display:block}
+.rc-score{
+  position:absolute;bottom:3px;right:3px;
+  font-size:8px;font-weight:900;padding:2px 5px;border-radius:4px;
+  background:rgba(0,0,0,.82);color:var(--gold);
+}
+.rc-score.high{color:var(--green)}
+.rc-score.low{color:var(--redlt)}
+.rc-name{font-size:9px;font-weight:600;color:rgba(255,255,255,.65);text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:80px}
+#rec-pagination{display:flex;align-items:center;gap:6px;padding:0 10px;color:rgba(255,255,255,.3);font-size:10px;font-weight:600}
+.pg-btn{width:24px;height:24px;border:none;cursor:pointer;border-radius:4px;background:rgba(255,255,255,.06);
+  color:rgba(255,255,255,.5);font-size:13px;display:flex;align-items:center;justify-content:center;transition:.12s}
+.pg-btn:hover{background:rgba(255,255,255,.12);color:#fff}
+.pg-btn:disabled{opacity:.3;cursor:default}
+#action-btn{
+  margin:10px 14px;padding:0 24px;height:42px;border:none;cursor:pointer;border-radius:10px;
+  font-size:11px;font-weight:900;letter-spacing:.14em;color:#fff;
+  background:linear-gradient(135deg,var(--red),#b91c1c);box-shadow:0 0 20px rgba(239,68,68,.25);
+  display:flex;align-items:center;justify-content:center;gap:7px;transition:.18s;white-space:nowrap;flex-shrink:0;
+}
+#action-btn:hover{background:linear-gradient(135deg,var(--redlt),var(--red));box-shadow:0 0 32px rgba(239,68,68,.45)}
+
+/* ── Animations ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.pslot{animation:fadeUp .3s ease both}
 </style>
 </head>
 <body>
-<div id="root">
 
-<!-- HEADER -->
-<div id="header">
+<!-- ─── TITLEBAR ─── -->
+<div id="titlebar">
   <div id="brand">
     <div id="brand-gem">A</div>
     <span id="brand-name">ATAK</span>
-    <div id="brand-sep"></div>
+    <div id="brand-dot"></div>
     <span id="brand-sub">AI COACH</span>
   </div>
-  <div id="header-mid">
-    <span id="phase-tag">CHAMPION SELECT</span>
-    <div id="timer-wrap">
-      <span id="timer-num">—</span>
-      <div id="timer-bar"><div id="timer-fill" style="width:100%"></div></div>
-    </div>
+  <div id="header-center">
+    <span id="patch-lbl">Patch —</span>
   </div>
-  <button id="close-btn" onclick="closeMe()">✕</button>
-</div>
-
-<!-- TEAMS -->
-<div class="g gold-top" id="teams-panel">
-  <div class="teams-layout">
-    <div class="team-col" id="ally-col">
-      <div class="team-hdr th-ally"><div class="th-dot"></div><span>ALLY TEAM</span></div>
-      <div class="champs-row" id="ally-row"></div>
-      <div class="bans-row"><span class="ban-lbl">BANS</span><div style="display:flex;gap:2px" id="ally-bans"></div></div>
-    </div>
-    <div id="vs-col"><div class="vs-bar"></div><span class="vs-txt">VS</span><div class="vs-bar"></div></div>
-    <div class="team-col enemy" id="enemy-col">
-      <div class="team-hdr th-enemy"><div class="th-dot"></div><span>ENEMY TEAM</span></div>
-      <div class="champs-row" id="enemy-row"></div>
-      <div class="bans-row"><div style="display:flex;gap:2px" id="enemy-bans"></div><span class="ban-lbl">BANS</span></div>
-    </div>
+  <div id="winbtns">
+    <button class="wbtn" onclick="minimizeMe()" title="Minimizar">&#8212;</button>
+    <button class="wbtn" id="wbtn-close" onclick="closeMe()" title="Cerrar">&#10005;</button>
   </div>
 </div>
 
-<!-- TAB BAR -->
-<div id="tab-bar">
-  <div class="tab active" data-panel="pick" onclick="switchTab('pick')"><div class="tab-dot"></div>YOUR PICK</div>
-  <div class="tab" data-panel="inspect" onclick="switchTab('inspect')"><div class="tab-dot"></div>INSPECT</div>
-  <div class="tab" data-panel="comp" onclick="switchTab('comp')"><div class="tab-dot"></div>TEAM COMP</div>
+<!-- ─── PHASE STEPPER ─── -->
+<div id="phase-bar">
+  <div class="phase-step ps-step" id="ps-0"><span class="ps-label">PLANIF.</span><div class="ps-dot"></div></div>
+  <div class="ps-line" id="pl-0"></div>
+  <div class="phase-step ps-step" id="ps-1"><div class="ps-dot"></div><span class="ps-label">BANNING</span></div>
+  <div class="ps-line" id="pl-1"></div>
+  <div class="phase-step ps-step" id="ps-2"><div class="ps-dot"></div><span class="ps-label">DRAFTING</span></div>
+  <div class="ps-line" id="pl-2"></div>
+  <div class="phase-step ps-step" id="ps-3"><div class="ps-dot"></div><span class="ps-label">PICKING</span></div>
+  <div class="ps-line" id="pl-3"></div>
+  <div class="phase-step ps-step" id="ps-4"><div class="ps-dot"></div><span class="ps-label">FINAL</span></div>
+  <span id="timer-badge">—</span>
 </div>
 
-<!-- CONTENT -->
-<div id="content-area">
+<!-- ─── MAIN CONTENT ─── -->
+<div id="main">
 
-  <!-- ── PANEL: YOUR PICK ── -->
-  <div class="panel active g" id="panel-pick">
-    <div id="no-pick">
-      <div class="np-orb">◈</div>
-      <div id="np-t">AWAITING YOUR CHAMPION</div>
-      <div id="np-s">Hover or lock in to see<br>AI build recommendations</div>
+  <!-- My Team -->
+  <div class="team-col" id="col-ally">
+    <div class="col-hdr"><div class="col-hdr-dot ally-dot"></div><span class="col-hdr-txt">MI EQUIPO</span></div>
+    <div class="bans-wrap" id="ally-bans">
+      <div class="bslot empty" data-idx="0"></div>
+      <div class="bslot empty" data-idx="1"></div>
+      <div class="bslot empty" data-idx="2"></div>
     </div>
-    <div id="pick-card">
-      <div id="pick-left">
-        <div id="portrait-wrap">
-          <img id="pick-img" src="" alt="" onerror="this.style.opacity='.08'" />
-          <div id="pick-img-shade"></div>
-          <div id="lock-badge">LOCKED IN</div>
-        </div>
-        <div id="pick-winrate">—%<div id="pick-winrate-lbl">WIN RATE</div></div>
-        <div style="display:flex;flex-direction:column;gap:2px">
-          <div class="side-stat"><span class="ss-lbl">PATCH</span><span class="ss-val" id="s-patch">—</span></div>
-          <div class="side-stat"><span class="ss-lbl">ROLE</span><span class="ss-val" id="s-role">—</span></div>
-        </div>
-      </div>
-      <div id="pick-right">
-        <div id="champ-name-row">
-          <span id="pick-champ-name">—</span>
-          <span id="pick-role-tag">—</span>
-        </div>
-        <div id="pick-tip" class="loading">Fetching champion analysis...</div>
-        <div>
-          <div class="sec-lbl">KEYSTONE</div>
-          <div id="keystone-row">
-            <img id="keystone-icon" src="" onerror="this.style.display='none'" />
-            <span id="keystone-name">—</span>
-            <img id="rune-path-icon" src="" onerror="this.style.display='none'" />
-          </div>
-          <div id="sub-runes"></div>
-        </div>
-        <div>
-          <div class="sec-lbl">BUILD</div>
-          <div class="item-line"><span class="il-lbl">STARTER</span><div class="items-row" id="starter-row"></div></div>
-          <div class="item-line"><span class="il-lbl">CORE</span><div class="items-row" id="core-row"></div></div>
-          <div class="item-line"><span class="il-lbl">BOOTS</span><div class="items-row" id="boots-row"></div></div>
-        </div>
-      </div>
+    <div id="ally-picks">
+      <!-- 5 pick slots injected by JS -->
     </div>
   </div>
 
-  <!-- ── PANEL: INSPECT ── -->
-  <div class="panel g teal-top" id="panel-inspect">
-    <div id="inspect-empty">
-      <div style="font-size:18px;opacity:.25">⊹</div>
-      <span>CLICK ANY CHAMPION ABOVE</span>
-    </div>
-    <div id="inspect-content">
-      <!-- Left: champion build -->
-      <div id="inspect-champ">
-        <div id="ins-portrait-wrap">
-          <img id="ins-portrait" src="" onerror="this.style.opacity='.08'" />
-          <div id="ins-shade"></div>
-          <span id="ins-champ-name">—</span>
-          <span id="ins-role">—</span>
-        </div>
-        <div id="ins-winrate-row">
-          <div>
-            <div id="ins-wr">—%</div>
-            <div id="ins-wr-lbl">WIN RATE</div>
-          </div>
-          <span id="ins-tier">—</span>
-        </div>
-        <div class="sec-lbl">KEYSTONE</div>
-        <div id="ins-keystone-row">
-          <img id="ins-keystone-icon" src="" onerror="this.style.display='none'" />
-          <span id="ins-keystone-name">—</span>
-        </div>
-        <div id="ins-sub-runes"></div>
-        <div class="sec-lbl">CORE ITEMS</div>
-        <div class="ins-items" id="ins-items"></div>
+  <!-- Center panel -->
+  <div id="center">
+    <div id="tabs">
+      <div class="tab active" data-tab="builds" onclick="switchTab('builds')">
+        <svg class="tab-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="10" width="12" height="1.5" rx=".75" fill="currentColor" opacity=".7"/><rect x="2" y="7" width="9" height="1.5" rx=".75" fill="currentColor" opacity=".5"/><rect x="2" y="4" width="6" height="1.5" rx=".75" fill="currentColor" opacity=".35"/></svg>
+        Builds
       </div>
-      <!-- Right: player stats -->
-      <div id="inspect-player">
-        <div id="pl-loading">Fetching player data...</div>
-        <div id="pl-data" style="display:none;flex-direction:column;gap:7px">
-          <div id="pl-header">
-            <span id="pl-name">—</span>
-            <div class="rank-badge">
-              <span class="rank-tier unranked" id="pl-tier">—</span>
-              <span class="rank-sub" id="pl-rank-sub">RANK</span>
-              <span class="rank-lp" id="pl-lp"></span>
-            </div>
-          </div>
-          <div id="pl-mastery-row">
+      <div class="tab" data-tab="strengths" onclick="switchTab('strengths')">
+        <svg class="tab-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2l1.6 3.3 3.6.5-2.6 2.5.6 3.6L8 10.3l-3.2 1.6.6-3.6L3 5.8l3.6-.5L8 2z" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        Fortalezas
+      </div>
+      <div class="tab" data-tab="weaknesses" onclick="switchTab('weaknesses')">
+        <svg class="tab-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="currentColor" stroke-width="1.2"/></svg>
+        Debilidades
+      </div>
+    </div>
+    <div id="content-area">
+      <!-- Builds panel -->
+      <div class="cpanel active" id="panel-builds">
+        <div id="waiting-pick">
+          <div class="wicon">⚔</div>
+          <div class="wtxt">ESPERANDO SELECCIÓN</div>
+          <div class="wsub">Elige un campeón para ver su build</div>
+        </div>
+        <div id="build-content">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <img id="bc-portrait" src="" alt="" style="width:52px;height:52px;border-radius:8px;object-fit:cover;border:1.5px solid rgba(200,168,78,.3)">
             <div>
-              <div id="pl-mastery-lv">—</div>
-              <div id="pl-mastery-lv-lbl">MASTERY</div>
-            </div>
-            <div style="margin-left:10px">
-              <div id="pl-mastery-pts">— pts</div>
-              <div id="pl-mastery-pts-lbl">CHAMPION PTS</div>
+              <div id="bc-name" style="font-size:18px;font-weight:900;color:#fff;line-height:1"></div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+                <span id="bc-role" style="font-size:8px;font-weight:700;letter-spacing:.18em;color:var(--teal);padding:1px 7px;border:1px solid rgba(11,196,227,.25);border-radius:999px"></span>
+                <span id="bc-wr" class="wr-badge"></span>
+                <span id="bc-src" style="font-size:8px;color:rgba(255,255,255,.2);letter-spacing:.1em"></span>
+              </div>
             </div>
           </div>
-          <div class="pl-stat-grid">
-            <div class="pl-stat" id="pl-stat-wr"><div class="pl-stat-v" id="pl-wr-v">—</div><div class="pl-stat-l">WINS / LOSSES</div></div>
-            <div class="pl-stat" id="pl-stat-lv"><div class="pl-stat-v" id="pl-lv-v">—</div><div class="pl-stat-l">SUMMONER LV</div></div>
+          <div class="sec-hdr">RUNAS</div>
+          <div class="runes-grid">
+            <div class="rune-path">
+              <div class="keystone-wrap">
+                <img id="bc-keystone" src="" alt="" class="keystone-img">
+                <div>
+                  <div id="bc-keystone-name" class="keystone-name"></div>
+                  <div id="bc-path-name" class="keystone-sub"></div>
+                </div>
+              </div>
+              <div class="rune-row" id="bc-primary-runes"></div>
+            </div>
+            <div style="padding-top:8px">
+              <div style="font-size:8px;letter-spacing:.15em;color:var(--txt2);margin-bottom:6px">SECUNDARIO</div>
+              <div class="rune-row" id="bc-secondary-runes"></div>
+            </div>
           </div>
-          <div id="pl-tags"></div>
+          <div class="sec-hdr">OBJETOS DE INICIO</div>
+          <div class="items-row" id="bc-starter"></div>
+          <div class="sec-hdr" style="margin-top:8px">OBJETOS CORE</div>
+          <div class="items-row" id="bc-core"></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <div class="sec-hdr" style="margin-bottom:0">BOTAS</div>
+            <div class="items-row" id="bc-boots" style="margin:0"></div>
+          </div>
+          <div class="sec-hdr">ORDEN HABILIDADES</div>
+          <div class="skill-row" id="bc-skills"></div>
+          <div id="tips-box" style="margin-top:10px;display:none">
+            <div class="sec-hdr">TIPS</div>
+            <div id="bc-tips"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Strengths panel -->
+      <div class="cpanel" id="panel-strengths">
+        <div class="sw-placeholder">
+          <div class="icon">★</div>
+          <div class="ttl">FORTALEZAS</div>
+          <div class="sub">Elige un campeón para ver sus fortalezas</div>
+        </div>
+      </div>
+      <!-- Weaknesses panel -->
+      <div class="cpanel" id="panel-weaknesses">
+        <div class="sw-placeholder">
+          <div class="icon">⚠</div>
+          <div class="ttl">DEBILIDADES</div>
+          <div class="sub">Elige un campeón para ver sus debilidades</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ── PANEL: TEAM COMP ── -->
-  <div class="panel g" id="panel-comp">
-    <div class="comp-section">
-      <div class="sec-lbl">DAMAGE DISTRIBUTION</div>
-      <div id="dmg-bar-wrap">
-        <div class="dmg-bar-track">
-          <div id="dmg-ad-fill" style="width:50%">AD</div>
-          <div id="dmg-ap-fill">AP</div>
-        </div>
-        <div class="dmg-legend">
-          <span class="dmg-ad-lbl" id="dmg-ad-pct">AD 50%</span>
-          <span class="dmg-ap-lbl" id="dmg-ap-pct">50% AP</span>
-        </div>
-      </div>
+  <!-- Enemy Team -->
+  <div class="team-col enemy" id="col-enemy">
+    <div class="col-hdr" style="flex-direction:row-reverse"><div class="col-hdr-dot enemy-dot"></div><span class="col-hdr-txt">ENEMIGOS</span></div>
+    <div class="bans-wrap" style="flex-direction:row-reverse" id="enemy-bans">
+      <div class="bslot empty" data-idx="0"></div>
+      <div class="bslot empty" data-idx="1"></div>
+      <div class="bslot empty" data-idx="2"></div>
     </div>
-    <div class="comp-section" style="padding-top:0">
-      <div class="sec-lbl">ROLE COVERAGE</div>
-      <div id="role-grid">
-        <div class="role-slot" id="rs-top"><div class="role-pos">TOP</div><img class="role-icon" id="ri-top" src=""/><div class="role-champ" id="rc-top">Empty</div></div>
-        <div class="role-slot" id="rs-jgl"><div class="role-pos">JGL</div><img class="role-icon" id="ri-jgl" src=""/><div class="role-champ" id="rc-jgl">Empty</div></div>
-        <div class="role-slot" id="rs-mid"><div class="role-pos">MID</div><img class="role-icon" id="ri-mid" src=""/><div class="role-champ" id="rc-mid">Empty</div></div>
-        <div class="role-slot" id="rs-bot"><div class="role-pos">BOT</div><img class="role-icon" id="ri-bot" src=""/><div class="role-champ" id="rc-bot">Empty</div></div>
-        <div class="role-slot" id="rs-sup"><div class="role-pos">SUP</div><img class="role-icon" id="ri-sup" src=""/><div class="role-champ" id="rc-sup">Empty</div></div>
-      </div>
-    </div>
-    <div class="comp-section" style="padding-top:0">
-      <div class="sec-lbl">TEAM PROFILE</div>
-      <div id="comp-tags"></div>
-      <div id="comp-verdict" style="margin-top:7px">Waiting for picks...</div>
-    </div>
-    <div class="comp-section" style="padding-top:0">
-      <div class="sec-lbl">SUGGESTED PICKS</div>
-      <div id="suggested-picks"></div>
+    <div id="enemy-picks">
+      <!-- 5 pick slots injected by JS -->
     </div>
   </div>
 
-</div><!-- /content-area -->
+</div><!-- #main -->
 
-<!-- THREAT BAR -->
-<div id="threat-bar">
-  <span id="threat-lbl">THREATS</span>
-  <div id="threats-wrap"></div>
-  <span style="color:rgba(255,255,255,.1);margin:0 2px">·</span>
-  <span id="counter-txt">—</span>
+<!-- ─── BOTTOM RECOMMENDATIONS ─── -->
+<div id="recs">
+  <div id="rec-tabs">
+    <div class="rtab active" data-rtab="bans" onclick="switchRecTab('bans')"><div class="rtab-dot"></div>BANS RECOMENDADOS</div>
+    <div class="rtab" data-rtab="picks" onclick="switchRecTab('picks')"><div class="rtab-dot"></div>PICKS RECOMENDADOS</div>
+  </div>
+  <div id="rec-content">
+    <div class="rpanel active" id="rpanel-bans">
+      <div class="rec-list" id="ban-rec-list"><span style="font-size:10px;color:rgba(255,255,255,.2);padding-left:10px">Cargando recomendaciones...</span></div>
+      <div id="rec-pagination">
+        <button class="pg-btn" id="pg-ban-prev" onclick="banPage(-1)">&#8249;</button>
+        <span id="pg-ban-lbl">1/1</span>
+        <button class="pg-btn" id="pg-ban-next" onclick="banPage(1)">&#8250;</button>
+      </div>
+      <button id="action-btn" onclick="() => {}">🔒 BAN</button>
+    </div>
+    <div class="rpanel" id="rpanel-picks">
+      <div class="rec-list" id="pick-rec-list"><span style="font-size:10px;color:rgba(255,255,255,.2);padding-left:10px">Cargando recomendaciones...</span></div>
+      <div id="rec-pagination" style="margin-left:auto">
+        <button class="pg-btn" id="pg-pick-prev" onclick="pickPage(-1)">&#8249;</button>
+        <span id="pg-pick-lbl">1/1</span>
+        <button class="pg-btn" id="pg-pick-next" onclick="pickPage(1)">&#8250;</button>
+      </div>
+      <button id="action-btn" onclick="() => {}">🔒 PICK</button>
+    </div>
+  </div>
 </div>
 
-</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>
-// ── Constants ──────────────────────────────────────────────────────────────
-const $ = id => document.getElementById(id)
-let ddPatch = null, currentChamp = null, lastSessionData = null
-let selectedSlot = null, autoPickTab = true
+const BACKEND = 'http://localhost:4000'
+const DD_KEY = {'Wukong':'MonkeyKing','Nunu & Willump':'Nunu','Renata Glasc':'Renata','Bel\'Veth':'BelVeth','K\'Sante':'KSante'}
 
+let ddPatch = null
+let sessionData = null
+let localCellId = null
+let recData  = { ban: [], pick: [] }
+let recPage  = { ban: 0, pick: 0 }
+const REC_PER_PAGE = 8
+
+// ── DDragon ────────────────────────────────────────────────────────
 async function getPatch() {
   if (ddPatch) return ddPatch
   try { ddPatch = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json())[0] }
-  catch { ddPatch = '15.1.1' }
+  catch { ddPatch = '15.2.1' }
+  document.getElementById('patch-lbl').textContent = 'Patch ' + ddPatch
   return ddPatch
 }
-const DD_KEY = {'Wukong':'MonkeyKing','Nunu & Willump':'Nunu','Renata Glasc':'Renata'}
-function cImg(ddKey, patch) { return ddKey&&patch?`https://ddragon.leagueoflegends.com/cdn/${patch}/img/champion/${ddKey}.png`:'' }
-
-// ── Tab switching ─────────────────────────────────────────────────────────
-function switchTab(name, auto=false) {
-  if (auto && !autoPickTab && name === 'pick') return   // don't auto-switch away from manual tab
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.panel === name))
-  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name))
-  if (!auto) autoPickTab = (name === 'pick')
-  if (name === 'comp' && lastSessionData) renderTeamComp(lastSessionData)
+function champPortrait(champName, patch) {
+  if (!champName || !patch) return ''
+  const key = DD_KEY[champName] || champName.replace(/['\s.]/g,'').replace(/^./,c=>c.toUpperCase())
+  return `https://ddragon.leagueoflegends.com/cdn/${patch}/img/champion/${key}.png`
+}
+function cdPortrait(id) {
+  return id ? `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${id}.png` : ''
 }
 
-// ── Team rendering ────────────────────────────────────────────────────────
-function makeSlot(slot, isMe, patch, isEnemy) {
-  const has = slot.champId && slot.ddKey
-  const el = document.createElement('div')
-  el.className = 'cslot'+(has?' new-pick':'')+(slot.isLocked?' locked':'')+(slot.isActing?' acting':'')+(isMe?' me':'')+(has?'':' empty')
-  el.dataset.cellId = slot.cellId
-  if (has) {
-    const img = document.createElement('img')
-    img.src = cImg(slot.ddKey, patch); img.alt = slot.champName||''; img.onerror = () => { img.style.opacity='.08' }
-    el.appendChild(img)
-    const g = document.createElement('div'); g.className = 'cgrad'; el.appendChild(g)
-    const pos = document.createElement('div'); pos.className = 'cpos'
-    const POS = {top:'TOP',jungle:'JGL',middle:'MID',bottom:'BOT',utility:'SUP',TOP:'TOP',JUNGLE:'JGL',MIDDLE:'MID',BOTTOM:'BOT',UTILITY:'SUP'}
-    pos.textContent = isMe ? 'YOU' : (POS[slot.position]||slot.position.slice(0,3).toUpperCase()||'')
-    el.appendChild(pos)
-    // Click handler
-    el.addEventListener('click', () => {
-      if (!has) return
-      autoPickTab = false
-      selectSlot(slot, isEnemy, patch)
-    })
+// ── Phase stepper ──────────────────────────────────────────────────
+const PHASE_MAP = { PLANNING: 0, BAN_PICK: 2, FINALIZATION: 4 }
+function setPhase(lcuPhase, totalBans) {
+  let step = PHASE_MAP[lcuPhase] ?? 0
+  if (lcuPhase === 'BAN_PICK') {
+    step = totalBans < 6 ? 1 : totalBans < 10 ? 2 : 3
   }
+  for (let i = 0; i <= 4; i++) {
+    const el = document.getElementById('ps-' + i)
+    el.classList.remove('active', 'done')
+    if (i < step) el.classList.add('done')
+    else if (i === step) el.classList.add('active')
+  }
+}
+
+// ── Timer ──────────────────────────────────────────────────────────
+let timerInterval = null
+function startTimer(secs) {
+  if (timerInterval) clearInterval(timerInterval)
+  let rem = secs
+  const el = document.getElementById('timer-badge')
+  function tick() {
+    if (rem <= 0) { el.textContent = '0'; return }
+    const m = Math.floor(rem / 60), s = rem % 60
+    el.textContent = m > 0 ? m + ':' + String(s).padStart(2,'0') : s + 's'
+    el.style.color = rem <= 10 ? 'var(--redlt)' : 'var(--gold)'
+    rem--
+  }
+  tick()
+  timerInterval = setInterval(tick, 1000)
+}
+
+// ── Tab switching ──────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab))
+  document.querySelectorAll('.cpanel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab))
+}
+function switchRecTab(tab) {
+  document.querySelectorAll('.rtab').forEach(t => t.classList.toggle('active', t.dataset.rtab === tab))
+  document.querySelectorAll('.rpanel').forEach(p => p.classList.toggle('active', p.id === 'rpanel-' + tab))
+}
+
+// ── Team slot rendering ─────────────────────────────────────────────
+function makePickSlot(slot, isEnemy, patch) {
+  const el = document.createElement('div')
+  el.className = 'pslot' + (slot.isMe ? ' me' : '') + (slot.isActing ? ' acting' : '') + (slot.isLocked ? (isEnemy ? ' locked enemy-pick' : ' locked') : '') + (isEnemy ? ' enemy-pick' : '')
+  el.style.animationDelay = (slot._idx * 0.04) + 's'
+
+  const portWrap = document.createElement('div')
+  portWrap.className = 'pslot-portrait' + (slot.champName ? '' : ' empty-port')
+  if (slot.champName && patch) {
+    const img = document.createElement('img')
+    img.src = champPortrait(slot.champName, patch)
+    img.onerror = () => { if (slot.champId) img.src = cdPortrait(slot.champId) }
+    portWrap.appendChild(img)
+    portWrap.classList.remove('empty-port')
+  }
+  el.appendChild(portWrap)
+
+  const info = document.createElement('div')
+  info.className = 'pslot-info'
+  const name = document.createElement('div')
+  name.className = 'pslot-name'
+  name.textContent = slot.champName || (slot.isActing ? 'Seleccionando...' : '—')
+  const sub = document.createElement('div')
+  sub.className = 'pslot-sub'
+  sub.textContent = slot.summonerName ? slot.summonerName.slice(0, 18) : ''
+  info.appendChild(name)
+  info.appendChild(sub)
+  el.appendChild(info)
+
+  if (slot.champName) {
+    const badge = document.createElement('div')
+    badge.className = 'tier-badge'
+    badge.id = 'tbadge-' + (slot.summonerName || slot.cellId)
+    badge.textContent = '—'
+    el.appendChild(badge)
+  }
+
   return el
 }
-function makeBan(ban, patch) {
-  const d = document.createElement('div'); d.className = 'bslot'+(ban.champId?' filled':' empty')
-  if (ban.champId && ban.ddKey) { const img = document.createElement('img'); img.src = cImg(ban.ddKey, patch); img.title = ban.champName||''; d.appendChild(img) }
-  return d
-}
-function renderTeams(data, patch) {
-  ;['ally','enemy'].forEach((side, i) => {
-    const team = i===0 ? data.myTeam : data.theirTeam
-    const rowEl = $(side+'-row'), bansEl = $(side+'-bans')
-    const rk = team.map(s => s.champId+'_'+s.isLocked+'_'+s.isActing).join()
-    if (rowEl.dataset.k !== rk) {
-      rowEl.dataset.k = rk; rowEl.innerHTML = ''
-      team.forEach(s => {
-        const isEnemy = i===1
-        const isMe = i===0 && s.cellId === data.localCellId
-        rowEl.appendChild(makeSlot(s, isMe, patch, isEnemy))
-      })
-      if (window.gsap) gsap.from(rowEl.children, { opacity:0, scale:.82, duration:.25, stagger:.04, ease:'back.out(1.5)' })
-    }
-    const bans = i===0 ? data.bans.myTeamBans : data.bans.theirTeamBans
-    const bk = bans.map(b => b.champId).join()
-    if (bansEl.dataset.k !== bk) { bansEl.dataset.k = bk; bansEl.innerHTML = ''; for(let j=0;j<5;j++) bansEl.appendChild(makeBan(bans[j]||{champId:0}, patch)) }
+
+function renderTeam(slots, containerId, isEnemy, patch) {
+  const container = document.getElementById(containerId)
+  container.innerHTML = ''
+  slots.forEach((slot, idx) => {
+    slot._idx = idx
+    container.appendChild(makePickSlot(slot, isEnemy, patch))
   })
-  // Restore selection highlight
-  if (selectedSlot) {
-    document.querySelectorAll('.cslot').forEach(el => el.classList.toggle('selected', el.dataset.cellId == selectedSlot.cellId))
-  }
-}
-function renderTimer(secs) {
-  if (!secs || secs < 0) return
-  $('timer-num').textContent = secs
-  $('timer-fill').style.width = Math.min(100, Math.max(0, (secs/30)*100)) + '%'
-  const urgent = secs < 10
-  $('timer-fill').style.background = urgent ? '#ef4444' : 'linear-gradient(90deg,var(--gold),var(--teal))'
-  if (window.gsap) gsap.to('#timer-num', { color: urgent ? '#ef4444' : 'var(--goldlt)', duration:.2 })
 }
 
-// ── Slot selection / inspect ──────────────────────────────────────────────
-async function selectSlot(slot, isEnemy, patch) {
-  selectedSlot = slot
-  // Highlight
-  document.querySelectorAll('.cslot').forEach(el => el.classList.toggle('selected', el.dataset.cellId == slot.cellId))
-  switchTab('inspect')
-  // Show inspect content
-  $('inspect-empty').style.display = 'none'
-  $('inspect-content').style.display = 'flex'
-  if (window.gsap) gsap.from('#inspect-content', { opacity:0, x:8, duration:.28, ease:'power2.out' })
-  // Fill champion side immediately from what we have
-  if (!patch) patch = await getPatch()
-  $('ins-portrait').src = cImg(slot.ddKey, patch)
-  $('ins-champ-name').textContent = slot.champName || '—'
-  $('ins-role').textContent = slot.position ? ({top:'TOP',jungle:'JGL',middle:'MID',bottom:'BOT',utility:'SUP'}[slot.position]||slot.position.slice(0,3).toUpperCase()) : ''
-  // Show player loading state
-  $('pl-loading').style.display = 'block'
-  $('pl-data').style.display = 'none'
-  $('pl-name').textContent = slot.summonerName || '—'
-  // Fetch champion build
-  if (slot.champName) fetchInspectBuild(slot.champName)
-  // Fill player data from cached session summoners
-  if (lastSessionData?.summoners?.[slot.cellId]) fillPlayerData(lastSessionData.summoners[slot.cellId], lastSessionData.mastery?.[slot.puuid+':'+slot.champId])
-  else { $('pl-loading').textContent = 'Fetching player data...' }
+function renderBans(bans, containerId, patch) {
+  const container = document.getElementById(containerId)
+  const slots = container.querySelectorAll('.bslot')
+  bans.slice(0, 3).forEach((ban, i) => {
+    if (!slots[i]) return
+    slots[i].innerHTML = ''
+    if (ban.champId && ban.champName) {
+      const img = document.createElement('img')
+      img.src = champPortrait(ban.champName, patch)
+      img.onerror = () => { if (ban.champId) img.src = cdPortrait(ban.champId) }
+      slots[i].appendChild(img)
+      slots[i].className = 'bslot filled'
+    } else {
+      slots[i].className = 'bslot empty'
+    }
+  })
 }
-function fillPlayerData(info, mastery) {
-  if (!info) { $('pl-loading').textContent = 'Player data unavailable'; return }
-  $('pl-loading').style.display = 'none'
-  $('pl-data').style.display = 'flex'
-  $('pl-name').textContent = info.displayName || info.summonerName || '—'
-  // Rank
-  const ranked = Array.isArray(info.ranked)
-    ? info.ranked.find(r => r.queueType === 'RANKED_FLEX_5x5' || r.queueType === 'RANKED_SOLO_5x5') || info.ranked[0]
-    : null
-  const tier = (info.rankTier || ranked?.tier || 'UNRANKED').toLowerCase()
-  const rank = (info.rank || ranked?.rank || '')
-  const lp   = info.rankedRating ?? ranked?.leaguePoints ?? null
-  const tierEl = $('pl-tier')
-  tierEl.textContent = tier === 'unranked' ? 'UNRANKED' : (tier.charAt(0).toUpperCase() + tier.slice(1) + ' ' + rank).trim()
-  tierEl.className = 'rank-tier ' + tier
-  if (lp !== null) $('pl-lp').textContent = lp + ' LP'
-  else $('pl-lp').textContent = ''
-  $('pl-rank-sub').textContent = ranked?.queueType === 'RANKED_FLEX_5x5' ? 'FLEX' : 'SOLO/DUO'
-  // Wins/losses
-  if (ranked?.wins !== undefined) {
-    const wr = Math.round((ranked.wins / (ranked.wins + ranked.losses)) * 100)
-    $('pl-wr-v').textContent = ranked.wins + 'W / ' + ranked.losses + 'L'
-    $('pl-stat-wr').className = 'pl-stat' + (wr >= 55 ? ' good' : wr < 45 ? ' bad' : ' gold')
-  }
-  $('pl-lv-v').textContent = info.summonerLevel || '—'
-  // Mastery
-  if (mastery && mastery.championLevel) {
-    $('pl-mastery-lv').textContent = mastery.championLevel
-    $('pl-mastery-pts').textContent = (mastery.championPoints / 1000).toFixed(0) + 'k pts'
-    if (window.gsap) gsap.from('#pl-mastery-lv', { textContent: 0, duration:.5, ease:'power2.out', snap:{textContent:1} })
-  } else {
-    $('pl-mastery-lv').textContent = '—'
-    $('pl-mastery-pts').textContent = 'Fetching...'
-  }
-  // Style tags
-  const tags = $('pl-tags'); tags.innerHTML = ''
-  if (ranked) {
-    const wr2 = Math.round((ranked.wins / (ranked.wins + ranked.losses)) * 100)
-    if (wr2 >= 55) addTag(tags, 'HIGH WR', 'carry')
-    if (ranked.wins + ranked.losses > 200) addTag(tags, 'VETERAN', 'farm')
-    if (tier === 'master' || tier === 'grandmaster' || tier === 'challenger') addTag(tags, 'HIGH ELO', 'agg')
-  }
-  if (mastery?.championLevel >= 7) addTag(tags, 'MAIN', 'carry')
-  else if (mastery?.championLevel >= 5) addTag(tags, 'COMFORTABLE', 'farm')
+
+// ── Session handler ─────────────────────────────────────────────────
+async function handleSession(data) {
+  sessionData = data
+  localCellId = data.localCellId
+  const patch = await getPatch()
+
+  // Map team slots
+  const myTeam = (data.myTeam || []).map((s, i) => ({ ...s, isMe: s.cellId === localCellId, _idx: i }))
+  const theirTeam = (data.theirTeam || []).map((s, i) => ({ ...s, _idx: i }))
+
+  renderTeam(myTeam, 'ally-picks', false, patch)
+  renderTeam(theirTeam, 'enemy-picks', true, patch)
+  renderBans(data.bans?.myTeamBans || [], 'ally-bans', patch)
+  renderBans(data.bans?.theirTeamBans || [], 'enemy-bans', patch)
+
+  const totalBans = (data.bans?.myTeamBans?.filter(b => b.champId).length || 0) + (data.bans?.theirTeamBans?.filter(b => b.champId).length || 0)
+  setPhase(data.timerPhase || 'BAN_PICK', totalBans)
+  if (data.timerSecs > 0) startTimer(data.timerSecs)
+
+  // Fetch recommendations for local player's position
+  const mySlot = myTeam.find(s => s.isMe)
+  const pos = mySlot?.position || 'BOTTOM'
+  fetchRecommendations(pos, data.platform)
 }
-function addTag(parent, label, cls='') {
-  const t = document.createElement('span'); t.className = 'pl-tag' + (cls?' '+cls:''); t.textContent = label; parent.appendChild(t)
+
+// ── Build render ────────────────────────────────────────────────────
+function renderRec(rec) {
+  document.getElementById('waiting-pick').style.display = 'none'
+  const bc = document.getElementById('build-content')
+  bc.style.display = 'block'
+
+  const patch = ddPatch || '15.2.1'
+  const img = document.getElementById('bc-portrait')
+  img.src = rec.portrait || champPortrait(rec.champion, patch)
+  img.onerror = () => {}
+  document.getElementById('bc-name').textContent = rec.champion || ''
+  document.getElementById('bc-role').textContent = rec.role || ''
+  const wrEl = document.getElementById('bc-wr')
+  if (rec.winRate != null) {
+    wrEl.textContent = rec.winRate + '% WR'
+    wrEl.className = 'wr-badge' + (rec.winRate >= 52 ? ' high' : rec.winRate < 48 ? ' low' : ' med')
+    wrEl.style.display = ''
+  } else { wrEl.style.display = 'none' }
+  document.getElementById('bc-src').textContent = rec.source === 'opgg' ? '✓ OP.GG' : rec.source === 'curated' ? '✓ Curada' : rec.source === 'ai' ? '✦ IA' : ''
+
+  const runes = rec.runes || {}
+  if (runes.keystone?.icon) {
+    document.getElementById('bc-keystone').src = runes.keystone.icon
+    document.getElementById('bc-keystone-name').textContent = runes.keystone.name || ''
+    document.getElementById('bc-path-name').textContent = runes.primaryPath?.name || ''
+  }
+  const primEl = document.getElementById('bc-primary-runes'); primEl.innerHTML = ''
+  ;(runes.primary || []).forEach(r => {
+    if (!r?.icon) return
+    const img = document.createElement('img'); img.className = 'rune-sm'
+    img.src = r.icon; img.title = r.name || ''; primEl.appendChild(img)
+  })
+  const secEl = document.getElementById('bc-secondary-runes'); secEl.innerHTML = ''
+  ;(runes.secondary || []).forEach(r => {
+    if (!r?.icon) return
+    const img = document.createElement('img'); img.className = 'rune-sm'
+    img.src = r.icon; img.title = r.name || ''; secEl.appendChild(img)
+  })
+
+  function fillItems(id, items) {
+    const el = document.getElementById(id); el.innerHTML = ''
+    ;(items || []).forEach(it => {
+      if (!it?.icon) return
+      const img = document.createElement('img'); img.className = 'iico'
+      img.src = it.icon; img.title = it.name || ''; el.appendChild(img)
+    })
+  }
+  fillItems('bc-starter', rec.items?.starter)
+  fillItems('bc-core', rec.items?.core)
+  const bootsEl = document.getElementById('bc-boots'); bootsEl.innerHTML = ''
+  if (rec.items?.boots?.icon) {
+    const img = document.createElement('img'); img.className = 'iico boots'
+    img.src = rec.items.boots.icon; img.title = rec.items.boots.name || ''
+    bootsEl.appendChild(img)
+  }
+
+  const skEl = document.getElementById('bc-skills'); skEl.innerHTML = ''
+  ;(rec.skillOrder || []).slice(0, 18).forEach(s => {
+    const d = document.createElement('div'); d.className = 'sk ' + s
+    d.textContent = s; skEl.appendChild(d)
+  })
+
+  const tips = rec.tips || []
+  const tipsBox = document.getElementById('tips-box')
+  tipsBox.style.display = tips.length ? '' : 'none'
+  const tipsEl = document.getElementById('bc-tips'); tipsEl.innerHTML = ''
+  tips.forEach(t => {
+    const d = document.createElement('div'); d.className = 'tip-item'
+    d.textContent = t; tipsEl.appendChild(d)
+  })
 }
-async function fetchInspectBuild(champName) {
-  // Reset
-  $('ins-wr').textContent = '—%'; $('ins-tier').textContent = '—'
-  $('ins-keystone-name').textContent = '—'; $('ins-sub-runes').innerHTML = ''; $('ins-items').innerHTML = ''
+
+// ── Recommendations ─────────────────────────────────────────────────
+async function fetchRecommendations(position, platform) {
+  const pos = position || 'BOTTOM'
+  const url = BACKEND + '/api/opgg/tier-list?position=' + encodeURIComponent(pos)
   try {
-    const res = await fetch('http://localhost:4000/api/champ-select?champion=' + encodeURIComponent(champName))
-    if (!res.ok) return
-    const rec = await res.json()
-    if (!rec.ok) return
-    if (rec.winRate) { $('ins-wr').textContent = rec.winRate.toFixed(1)+'%'; $('ins-wr').style.color = rec.winRate>=52?'var(--teal)':rec.winRate>=49?'var(--gold)':'var(--red)' }
-    if (rec.role) $('ins-role').textContent = rec.role
-    const ks = rec.runes?.keystone
-    if (ks?.icon) { $('ins-keystone-icon').src = ks.icon; $('ins-keystone-icon').style.display='block' }
-    if (ks?.name) $('ins-keystone-name').textContent = ks.name
-    const sub = $('ins-sub-runes'); sub.innerHTML = ''
-    ;[...(rec.runes?.primary||[]),...(rec.runes?.secondary||[])].slice(0,5).forEach(r => {
-      if (!r?.icon) return
-      const img = document.createElement('img'); img.className = 'ins-rune'; img.src = r.icon; img.onerror = () => { img.style.display='none' }; sub.appendChild(img)
-    })
-    const itmEl = $('ins-items'); itmEl.innerHTML = ''
-    const allItems = [...(rec.items?.starter||[]),...(rec.items?.core?.slice(0,4)||[])]
-    if (rec.items?.boots) allItems.push(rec.items.boots)
-    allItems.forEach(item => {
-      if (!item?.icon) return
-      const img = document.createElement('img'); img.className = 'ins-iico'; img.src = item.icon; img.title = item.name||''; img.onerror = () => { img.style.display='none' }; itmEl.appendChild(img)
-    })
-    if (window.gsap) gsap.from([...sub.children,...itmEl.children], { opacity:0, scale:.8, duration:.2, stagger:.03, ease:'back.out(1.4)' })
+    const r = await fetch(url)
+    const d = await r.json()
+    if (!d.ok || !d.picks?.length) return
+    recData.ban  = d.picks
+    recData.pick = [...d.picks].reverse() // show reverse as "priority picks"
+    recPage.ban  = 0; recPage.pick = 0
+    renderRecPage('ban')
+    renderRecPage('pick')
   } catch {}
 }
 
-// ── YOUR PICK panel ───────────────────────────────────────────────────────
-function showPending(champName, ddKey, patch) {
-  currentChamp = champName
-  $('no-pick').style.display = 'none'; $('pick-card').style.display = 'flex'
-  $('pick-champ-name').textContent = champName
-  $('pick-tip').className = 'loading'; $('pick-tip').textContent = `Analyzing ${champName}...`
-  if (ddKey && patch) $('pick-img').src = cImg(ddKey, patch)
-  if (autoPickTab) switchTab('pick', true)
-  if (window.gsap) gsap.from('#pick-card', { opacity:0, y:6, duration:.28, ease:'power2.out' })
-}
-function renderRec(rec) {
-  $('no-pick').style.display = 'none'; $('pick-card').style.display = 'flex'
-  $('pick-champ-name').textContent = rec.champion || currentChamp || '—'
-  $('pick-role-tag').textContent   = rec.role || '—'
-  $('s-role').textContent          = rec.role || '—'
-  if (rec.portrait) $('pick-img').src = rec.portrait
-  if (rec.patch)    $('s-patch').textContent = rec.patch
-  if (rec.winRate) {
-    const wr = rec.winRate.toFixed(1)
-    $('pick-winrate').innerHTML = `${wr}%<div id="pick-winrate-lbl" style="font-size:5.5px;letter-spacing:.18em;color:var(--golddm);font-weight:700">WIN RATE</div>`
-    $('pick-winrate').style.color = rec.winRate>=52?'var(--teal)':rec.winRate>=49?'var(--gold)':'var(--red)'
-  }
-  if (rec.tips?.[0]) { $('pick-tip').className=''; $('pick-tip').textContent = rec.tips[0] }
-  const ks = rec.runes?.keystone
-  if (ks?.icon) { $('keystone-icon').src=ks.icon; $('keystone-icon').style.display='block' }
-  if (ks?.name) $('keystone-name').textContent = ks.name
-  const pi = rec.runes?.primaryPath?.icon
-  if (pi) { $('rune-path-icon').src=pi; $('rune-path-icon').style.display='block' }
-  const sub = $('sub-runes'); sub.innerHTML = ''
-  ;[...(rec.runes?.primary||[]),...(rec.runes?.secondary||[])].slice(0,5).forEach(r => {
-    if (!r?.icon) return
-    const img = document.createElement('img'); img.className='rune-sm'; img.src=r.icon; img.onerror=()=>{ img.style.display='none' }; sub.appendChild(img)
+function renderRecPage(type) {
+  const list = recData[type]
+  const page = recPage[type]
+  const start = page * REC_PER_PAGE
+  const slice = list.slice(start, start + REC_PER_PAGE)
+  const total = Math.ceil(list.length / REC_PER_PAGE)
+
+  const el = document.getElementById(type + '-rec-list')
+  el.innerHTML = ''
+  slice.forEach(c => {
+    const wrap = document.createElement('div'); wrap.className = 'rec-champ'
+    const imgWrap = document.createElement('div'); imgWrap.className = 'rc-img-wrap'
+    const img = document.createElement('img')
+    img.src = cdPortrait(c.id)
+    img.onerror = () => { img.style.opacity = '.15' }
+    imgWrap.appendChild(img)
+    const scoreBadge = document.createElement('span')
+    scoreBadge.className = 'rc-score' + (c.score >= 7 ? ' high' : c.score <= 3 ? ' low' : '')
+    scoreBadge.textContent = c.score?.toFixed(1) ?? '—'
+    imgWrap.appendChild(scoreBadge)
+    wrap.appendChild(imgWrap)
+    const nm = document.createElement('div'); nm.className = 'rc-name'; nm.textContent = c.name
+    wrap.appendChild(nm)
+    el.appendChild(wrap)
   })
-  function fillRow(id, items, cls='') {
-    const row=$(id); row.innerHTML=''; (items||[]).forEach(item => {
-      if (!item?.icon) return
-      const img=document.createElement('img'); img.className='iico'+cls; img.src=item.icon; img.title=item.name||''; img.onerror=()=>{img.style.display='none'}; row.appendChild(img)
-    })
-    if (window.gsap) gsap.from(row.children,{opacity:0,scale:.8,duration:.2,stagger:.04,ease:'back.out(1.4)'})
-  }
-  fillRow('starter-row', rec.items?.starter)
-  fillRow('core-row',    rec.items?.core?.slice(0,6))
-  fillRow('boots-row',   rec.items?.boots?[rec.items.boots]:[], ' boots')
-  if (autoPickTab) switchTab('pick', true)
-}
-function updateLock(on) { $('lock-badge').className = on ? 'on' : '' }
 
-// ── Team Comp Analysis ────────────────────────────────────────────────────
-const AD_CHAMPS = new Set(['Caitlyn','Jinx','Draven','Miss Fortune','Vayne','Twitch','Xayah','Jhin','Sivir','Lucian','Tristana','Kalista','Varus','Ezreal','Samira','Nilah','Zeri','Aphelios','Senna','Ashe','Kog\'Maw','Darius','Garen','Fiora','Riven','Renekton','Camille','Jax','Irelia','Aatrox','Tryndamere','Yasuo','Yone','Master Yi','Lee Sin','Jarvan IV','Vi','Xin Zhao','Rengar','Kha\'Zix','Graves','Nocturne','Warwick','Olaf','Shyvana','Udyr','Zed','Talon','Qiyana','Naafiri','Bel\'Veth','Quinn','Draven','Gangplank','Gnar','Jayce','Kennen','Volibear'])
-const ENGAGE_CHAMPS = new Set(['Malphite','Leona','Nautilus','Blitzcrank','Thresh','Amumu','Jarvan IV','Vi','Zac','Alistar','Braum','Ornn','Sejuani','Hecarim','Rell','Poppy','Galio','Rakan','Wukong','Nocturne'])
-const POKE_CHAMPS = new Set(['Lux','Ezreal','Varus','Jayce','Nidalee','Karma','Xerath','Vel\'Koz','Ziggs','Zoe','Gangplank','Miss Fortune','Caitlyn','Senna','Kog\'Maw'])
-const SUSTAIN_CHAMPS = new Set(['Soraka','Nami','Yuumi','Sona','Lulu','Janna','Tahm Kench','Aatrox','Vladimir','Warwick','Mundo','Mundo','Olaf'])
-const TANK_CHAMPS = new Set(['Malphite','Nautilus','Leona','Amumu','Zac','Ornn','Cho\'Gath','Tahm Kench','Maokai','Nunu & Willump','Gragas','Shen','Poppy','Rammus','Sejuani','Rell','Alistar'])
-
-const SUGGESTIONS = {
-  TOP:    ['Garen','Darius','Fiora','Camille','Malphite','Ornn','Shen','Jax','Gnar'],
-  JUNGLE: ['Lee Sin','Vi','Amumu','Hecarim','Graves','Kha\'Zix','Elise','Warwick','Zac'],
-  MID:    ['Lux','Ahri','Zed','Viktor','Orianna','Vex','Syndra','Yasuo','Fizz'],
-  BOT:    ['Jinx','Caitlyn','Miss Fortune','Jhin','Xayah','Samira','Ezreal','Twitch'],
-  SUP:    ['Thresh','Nautilus','Leona','Lulu','Soraka','Blitzcrank','Janna','Senna'],
+  document.getElementById('pg-' + type + '-lbl').textContent = (page + 1) + '/' + Math.max(1, total)
+  document.getElementById('pg-' + type + '-prev').disabled = page === 0
+  document.getElementById('pg-' + type + '-next').disabled = page >= total - 1
 }
 
-function renderTeamComp(data) {
-  if (!data?.myTeam) return
-  const patch = ddPatch || '15.1.1'
-  const picks = data.myTeam.filter(s => s.champName)
-  const roles = {TOP:null,JUNGLE:null,MIDDLE:null,BOTTOM:null,UTILITY:null}
-  picks.forEach(s => { if (s.position && roles[s.position] !== undefined) roles[s.position] = s })
-  // Damage split
-  let adCount = 0, apCount = 0
-  picks.forEach(s => { if (AD_CHAMPS.has(s.champName)) adCount++; else apCount++ })
-  const total = adCount + apCount || 1
-  const adPct = Math.round((adCount/total)*100), apPct = 100-adPct
-  $('dmg-ad-fill').style.width = adPct + '%'
-  $('dmg-ad-fill').textContent = adPct + '%'
-  $('dmg-ap-fill').textContent = apPct + '%'
-  $('dmg-ad-pct').textContent = 'AD ' + adPct + '%'
-  $('dmg-ap-pct').textContent = apPct + '% AP'
-  // Role coverage
-  const posMap = {TOP:'top',JUNGLE:'jgl',MIDDLE:'mid',BOTTOM:'bot',UTILITY:'sup'}
-  for (const [pos, slot] of Object.entries(roles)) {
-    const key = posMap[pos]; if (!key) continue
-    const slotEl = $('rs-'+key), img = $('ri-'+key), lbl = $('rc-'+key)
-    if (slot) {
-      slotEl.className = 'role-slot filled'
-      img.src = cImg(slot.ddKey, patch)
-      img.onerror = () => { img.style.opacity='.1' }
-      lbl.textContent = slot.champName
-    } else {
-      slotEl.className = 'role-slot empty'
-      img.src = ''; lbl.textContent = 'Empty'
-    }
-  }
-  // Tags + verdict
-  const tags = $('comp-tags'); tags.innerHTML = ''
-  const champNames = picks.map(s=>s.champName)
-  const hasEngage  = champNames.some(c => ENGAGE_CHAMPS.has(c))
-  const hasPoke    = champNames.some(c => POKE_CHAMPS.has(c))
-  const hasSustain = champNames.some(c => SUSTAIN_CHAMPS.has(c))
-  const hasTank    = champNames.some(c => TANK_CHAMPS.has(c))
-  const hasADC     = roles.BOTTOM?.champName
-  const filled     = picks.length
-  if (hasEngage) addCompTag(tags, 'ENGAGE', 'engage')
-  if (hasPoke)   addCompTag(tags, 'POKE', 'poke')
-  if (hasSustain)addCompTag(tags, 'SUSTAIN', 'sup')
-  if (hasTank)   addCompTag(tags, 'TANK', 'engage')
-  if (adPct >= 60)     addCompTag(tags, 'HEAVY AD', 'teamfight')
-  else if (apPct >= 60) addCompTag(tags, 'HEAVY AP', 'poke')
-  else                  addCompTag(tags, 'MIXED DMGN', 'teamfight')
-  // Verdict
-  let verdict = ''
-  if (filled < 2) verdict = 'Waiting for more picks to analyze team composition...'
-  else if (hasEngage && hasTank && hasADC) verdict = 'Strong teamfight composition with frontline engage and sustained damage. Play around your team cooldowns — initiate when everyone is ready.'
-  else if (hasPoke && !hasEngage) verdict = 'Poke composition — avoid hard engages. Chip them down from range before objectives. Build Tear/Mana items to sustain poke.'
-  else if (!hasTank && !hasEngage) verdict = 'Squishy composition — high damage but fragile. Need to pick fights carefully. Avoid prolonged teamfights in the open.'
-  else if (hasSustain && hasTank) verdict = 'Scaling composition with sustain. Safe early, dominant late. Prioritize farming and avoid early coinflip fights.'
-  else verdict = 'Flexible composition. Adapt your gameplan based on enemy picks and the specific game state.'
-  $('comp-verdict').textContent = verdict
-  // Suggested picks
-  const suggestEl = $('suggested-picks'); suggestEl.innerHTML = ''
-  const missingRoles = Object.entries(roles).filter(([,v]) => !v).map(([k]) => k)
-  if (missingRoles.length === 0) {
-    suggestEl.innerHTML = '<div style="font-size:8px;color:rgba(255,255,255,.25);font-style:italic">All roles filled — team looks complete.</div>'
-  } else {
-    missingRoles.slice(0,3).forEach(pos => {
-      const posKey = pos === 'UTILITY' ? 'SUP' : pos
-      const mapped = {TOP:'TOP',JUNGLE:'JUNGLE',MIDDLE:'MID',BOTTOM:'BOT',UTILITY:'SUP'}
-      const candidates = SUGGESTIONS[posKey] || []
-      if (!candidates.length) return
-      const pick = candidates[0]
-      const row = document.createElement('div'); row.className = 'sp-row'
-      const img = document.createElement('img'); img.className = 'sp-icon'; img.onerror = () => { img.style.opacity='.1' }
-      const ddKey = pick.replace(/['\s.&]/g,'')
-      img.src = cImg(ddKey, patch)
-      row.appendChild(img)
-      const info = document.createElement('div'); info.className = 'sp-info'
-      info.innerHTML = `<div class="sp-name">${pick}</div><div class="sp-reason">Fills ${mapped[pos]} · strong in current meta</div>`
-      row.appendChild(info)
-      suggestEl.appendChild(row)
-    })
-  }
-  if (window.gsap) gsap.from(['#role-grid > *', '#comp-tags > *'], { opacity:0, y:6, duration:.3, stagger:.05, ease:'power2.out' })
-}
-function addCompTag(parent, label, cls) {
-  const t = document.createElement('span'); t.className='comp-tag '+(cls||''); t.textContent=label; parent.appendChild(t)
-}
+function banPage(delta)  { recPage.ban  = Math.max(0, recPage.ban  + delta); renderRecPage('ban') }
+function pickPage(delta) { recPage.pick = Math.max(0, recPage.pick + delta); renderRecPage('pick') }
 
-// ── Threats ───────────────────────────────────────────────────────────────
-const COUNTERS = {
-  'Zed':['Lissandra','Malzahar','Kassadin'],'Ahri':['Kassadin','Vex','Fizz'],
-  'Yasuo':['Malzahar','Pantheon','Wukong'],'Yone':['Malzahar','Vex','Renekton'],
-  'Irelia':['Malphite','Kayle','Quinn'],'Jinx':['Draven','Caitlyn','Sivir'],
-  'Darius':['Vayne','Quinn','Jayce'],'Lee Sin':['Trundle','Amumu','Warwick'],
-  'Vayne':['Caitlyn','Draven','Miss Fortune'],'Fizz':['Galio','Malzahar','Diana'],
-  'Katarina':['Vex','Diana','Kassadin'],'Akali':['Galio','Diana','Malzahar'],
-  'Caitlyn':['Draven','Sivir','Miss Fortune'],'Master Yi':['Rammus','Warwick','Trundle'],
+// ── Window controls ─────────────────────────────────────────────────
+function minimizeMe() {
+  if (typeof overwolf !== 'undefined') overwolf.windows.getCurrentWindow(r => overwolf.windows.minimize(r.window.id))
 }
-function renderThreats(theirTeam, patch) {
-  const t = theirTeam.filter(s => s.champId && s.champName)
-  if (!t.length) { $('threat-bar').style.display='none'; return }
-  $('threat-bar').style.display='flex'
-  const wrap=$('threats-wrap'); wrap.innerHTML=''
-  t.slice(0,4).forEach(th => {
-    const p=document.createElement('div'); p.className='tpill'
-    if (th.ddKey&&ddPatch){ const img=document.createElement('img'); img.src=cImg(th.ddKey,ddPatch); img.onerror=()=>{img.style.display='none'}; p.appendChild(img) }
-    const s=document.createElement('span'); s.textContent=th.champName; p.appendChild(s)
-    wrap.appendChild(p)
-  })
-  const cSet=new Set(); t.forEach(th=>(COUNTERS[th.champName]||[]).forEach(c=>cSet.add(c)))
-  const el=$('counter-txt')
-  if (cSet.size) el.innerHTML='Counter: <span>'+[...cSet].slice(0,3).join(', ')+'</span>'
-  else el.textContent=''
-}
-
-// ── Main session handler ──────────────────────────────────────────────────
-async function handleSession(data) {
-  if (!ddPatch) await getPatch()
-  lastSessionData = data
-  renderTeams(data, ddPatch)
-  renderTimer(data.timerSecs)
-  // Update selected slot player data if it just arrived
-  if (selectedSlot && data.summoners?.[selectedSlot.cellId]) {
-    const masteryKey = selectedSlot.puuid + ':' + selectedSlot.champId
-    fillPlayerData(data.summoners[selectedSlot.cellId], data.mastery?.[masteryKey])
-  }
-  // Auto-pick tab: detect my champ
-  const me = data.myTeam?.find(p => p.cellId === data.localCellId)
-  if (me?.champId && me.champName && me.champName !== currentChamp) showPending(me.champName, me.ddKey, ddPatch)
-  if (me?.champId) updateLock(me.isLocked)
-  if (data.theirTeam?.some(t => t.champId)) renderThreats(data.theirTeam, ddPatch)
-  // If team comp tab is active, refresh it
-  const compActive = document.querySelector('.tab[data-panel="comp"]')?.classList.contains('active')
-  if (compActive) renderTeamComp(data)
-}
-
 function closeMe() {
-  if (typeof overwolf !== 'undefined') overwolf.windows.getCurrentWindow(r => { if (r.status==='success') overwolf.windows.close(r.window.id) })
+  if (typeof overwolf !== 'undefined') overwolf.windows.getCurrentWindow(r => overwolf.windows.close(r.window.id))
 }
+
+// ── Dev mock ────────────────────────────────────────────────────────
+if (typeof overwolf === 'undefined') {
+  getPatch().then(patch => {
+    handleSession({
+      localCellId: 1, timerPhase: 'BAN_PICK', timerSecs: 28, platform: 'LA1',
+      myTeam: [
+        { cellId:1, champId:55, champName:'Katarina', summonerName:'Kister', position:'MIDDLE', isActing:false, isLocked:true },
+        { cellId:2, champId:64, champName:'Lee Sin',  summonerName:'Player2', position:'JUNGLE',  isActing:false, isLocked:false },
+        { cellId:3, champId:0,  champName:null,       summonerName:'Player3', position:'TOP',     isActing:true,  isLocked:false },
+        { cellId:4, champId:0,  champName:null,       summonerName:'Player4', position:'BOTTOM',  isActing:false, isLocked:false },
+        { cellId:5, champId:0,  champName:null,       summonerName:'Player5', position:'UTILITY', isActing:false, isLocked:false },
+      ],
+      theirTeam: [
+        { cellId:6,  champId:103, champName:'Ahri',      summonerName:'Enemy1', position:'MIDDLE',  isActing:false, isLocked:true },
+        { cellId:7,  champId:0,   champName:null,         summonerName:'Enemy2', position:'JUNGLE',  isActing:false, isLocked:false },
+        { cellId:8,  champId:0,   champName:null,         summonerName:'Enemy3', position:'TOP',     isActing:false, isLocked:false },
+        { cellId:9,  champId:0,   champName:null,         summonerName:'Enemy4', position:'BOTTOM',  isActing:false, isLocked:false },
+        { cellId:10, champId:0,   champName:null,         summonerName:'Enemy5', position:'UTILITY', isActing:false, isLocked:false },
+      ],
+      bans: {
+        myTeamBans:    [{ champId:22,  champName:'Ashe'    }, { champId:51,  champName:'Caitlyn' }, { champId:0, champName:null }],
+        theirTeamBans: [{ champId:412, champName:'Thresh'  }, { champId:0,   champName:null       }, { champId:0, champName:null }],
+      },
+      summoners:{}, mastery:{}, opggData:{},
+    })
+  })
+}
+
+// ── Overwolf listeners ──────────────────────────────────────────────
 if (typeof overwolf !== 'undefined') {
   overwolf.windows.onMessageReceived.addListener(msg => {
     const c = msg?.content; if (!c) return
@@ -918,10 +754,9 @@ if (typeof overwolf !== 'undefined') {
     if (c.type === 'champion-recommendation' && c.data?.ok) renderRec(c.data)
   })
 }
+
+// Bootstrap
 getPatch()
 </script>
-<script src="atak-loader.js"></script>
-<!-- Design preview (browser only; ignored by Overwolf). Open with ?preview -->
-<script>if(location.search.toLowerCase().includes('preview')){var s=document.createElement('script');s.src='preview-mock.js';document.body.appendChild(s);}</script>
 </body>
 </html>

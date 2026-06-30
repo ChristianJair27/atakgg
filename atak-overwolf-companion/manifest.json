@@ -16,7 +16,8 @@
     "GameEvents",
     "Hotkeys",
     "FileSystem",
-    "Tray"
+    "Tray",
+    "Web"
   ],
   "data": {
     "start_window": "background",
@@ -31,31 +32,29 @@
         "show_in_taskbar": false,
         "transparent": false,
         "resizable": false,
-        "size": { "width": 0, "height": 0 },
+        "size": { "width": 400, "height": 300 },
         "start_position": { "top": 0, "left": 0 },
         "is_background_page": true
       },
       "in_game": {
         "file": "in_game.html",
-        "transparent": true,
+        "transparent": false,
         "resizable": true,
-        "show_in_taskbar": false,
+        "show_in_taskbar": true,
         "keep_window_location": true,
-        "use_os_windowing": false,
-        "size": { "width": 380, "height": 520 },
-        "start_position": { "top": 80, "left": 20 },
-        "focus_game_takeover": "ReleaseOnHidden",
-        "focus_game_takeover_release_hotkey": "toggle_app"
+        "use_os_windowing": true,
+        "size": { "width": 400, "height": 560 },
+        "start_position": { "top": 80, "left": 20 }
       },
       "champ_select": {
         "file": "champ_select.html",
-        "transparent": true,
+        "transparent": false,
         "resizable": true,
         "show_in_taskbar": false,
         "keep_window_location": true,
         "use_os_windowing": false,
-        "size": { "width": 800, "height": 590 },
-        "start_position": { "top": 80, "left": 1100 }
+        "size": { "width": 1120, "height": 760 },
+        "start_position": { "top": 60, "left": 800 }
       },
       "queue_profile": {
         "file": "queue_profile.html",
@@ -84,8 +83,38 @@
         "show_in_taskbar": true,
         "keep_window_location": true,
         "use_os_windowing": false,
-        "size": { "width": 900, "height": 600 },
-        "start_position": { "top": 120, "left": 200 }
+        "size": { "width": 1000, "height": 680 },
+        "start_position": { "top": 80, "left": 160 }
+      },
+      "desktop": {
+        "file": "desktop.html",
+        "transparent": false,
+        "resizable": true,
+        "show_in_taskbar": true,
+        "keep_window_location": true,
+        "use_os_windowing": true,
+        "size": { "width": 1440, "height": 900 },
+        "start_position": { "top": 60, "left": 120 }
+      },
+      "home": {
+        "file": "home.html",
+        "transparent": false,
+        "resizable": true,
+        "show_in_taskbar": true,
+        "keep_window_location": true,
+        "use_os_windowing": true,
+        "size": { "width": 1280, "height": 820 },
+        "start_position": { "top": 60, "left": 120 }
+      },
+      "player_stats": {
+        "file": "player_stats.html",
+        "transparent": false,
+        "resizable": true,
+        "show_in_taskbar": true,
+        "keep_window_location": true,
+        "use_os_windowing": false,
+        "size": { "width": 1300, "height": 720 },
+        "start_position": { "top": 80, "left": 160 }
       }
     },
     "launch_events": [
@@ -102,6 +131,11 @@
         "title": "Toggle ATAK Overlay",
         "action-type": "toggle",
         "default": "F9"
+      },
+      "toggle_scoreboard": {
+        "title": "Toggle Player Stats",
+        "action-type": "toggle",
+        "default": "Ctrl+Shift+S"
       }
     }
   }

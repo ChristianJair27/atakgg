@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>ATAK — Stats de Partida</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1300px;height:720px;overflow:hidden;user-select:none;
+  font-family:'Segoe UI',system-ui,sans-serif;color:#e8e8ea;background:#0b0c0e}
+::-webkit-scrollbar{width:2px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
+:root{
+  --blue:#3b82f6;--blue2:rgba(59,130,246,.12);--blueb:rgba(59,130,246,.22);
+  --red:#ef4444;  --red2:rgba(239,68,68,.12);  --redb:rgba(239,68,68,.22);
+  --teal:#0bc4e3; --gold:#c8aa6e; --green:#4ade80;
+  --surf:rgba(255,255,255,.04); --bord:rgba(255,255,255,.07);
+  --iron:#7f7f7f;--bronze:#cd7f32;--silver:#a8b4c4;--gold-t:#e6b84a;
+  --plat:#52c48b;--emer:#4cad6d;--dia:#60a5fa;
+  --master:#a855f7;--gm:#f87171;--chal:#0bc4e3;
+}
+
+/* ── Titlebar ── */
+#titlebar{
+  display:flex;align-items:center;gap:10px;
+  height:36px;padding:0 14px;flex-shrink:0;
+  background:rgba(0,0,0,.6);border-bottom:1px solid rgba(255,255,255,.06);
+  -webkit-app-region:drag;position:relative;z-index:10;
+}
+#brand-gem{width:18px;height:18px;border-radius:4px;background:linear-gradient(135deg,#ef4444,#991b1b);
+  display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:#fff;flex-shrink:0}
+#brand-name{font-size:11px;font-weight:800;letter-spacing:.09em;color:rgba(255,255,255,.7)}
+#title-sep{width:1px;height:12px;background:rgba(255,255,255,.12)}
+#title-lbl{font-size:9px;font-weight:700;letter-spacing:.15em;color:rgba(255,255,255,.35)}
+#hint-lbl{margin-left:auto;font-size:7.5px;font-weight:600;letter-spacing:.12em;
+  color:rgba(255,255,255,.2);padding:2px 8px;border:1px solid rgba(255,255,255,.08);border-radius:4px}
+#close-btn{-webkit-app-region:no-drag;width:22px;height:22px;border-radius:5px;background:transparent;
+  border:none;cursor:pointer;color:rgba(255,255,255,.3);font-size:12px;
+  display:flex;align-items:center;justify-content:center;transition:.12s;margin-left:8px}
+#close-btn:hover{background:rgba(239,68,68,.15);color:#ef4444}
+
+/* ── Main content ── */
+#content{display:flex;flex-direction:column;height:calc(100% - 36px);padding:8px 12px;gap:6px}
+
+/* ── Team section ── */
+.team-section{display:flex;flex-direction:column;gap:5px;flex:1}
+.team-label{
+  display:flex;align-items:center;gap:7px;
+  font-size:7.5px;font-weight:800;letter-spacing:.2em;
+  padding:3px 0;
+}
+.team-label.blue{color:rgba(100,150,255,.7)}
+.team-label.red{color:rgba(255,100,110,.7)}
+.tl-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.blue .tl-dot{background:#3b82f6;box-shadow:0 0 8px rgba(59,130,246,.6)}
+.red  .tl-dot{background:#ef4444;box-shadow:0 0 8px rgba(239,68,68,.6)}
+.tl-kda{margin-left:auto;font-size:7px;color:rgba(255,255,255,.2);font-weight:600}
+
+/* ── Player row ── */
+.player-row{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;flex:1}
+
+/* ── Player card ── */
+.pcard{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;
+  padding:9px 10px;display:flex;flex-direction:column;gap:0;position:relative;overflow:hidden;
+  transition:background .15s;
+}
+.pcard:hover{background:rgba(255,255,255,.05)}
+.pcard.me{border-color:rgba(200,170,110,.3);background:rgba(200,170,110,.04)}
+.pcard.blue-card{border-top:2px solid rgba(59,130,246,.35)}
+.pcard.red-card{border-top:2px solid rgba(239,68,68,.3)}
+.pcard.me.blue-card{border-top-color:rgba(200,170,110,.6)}
+.pcard.loading{opacity:.45}
+
+/* Card top: champion + name */
+.card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.champ-wrap{position:relative;flex-shrink:0}
+.champ-ico{width:48px;height:48px;border-radius:10px;object-fit:cover;display:block;
+  border:1.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04)}
+.champ-lv{position:absolute;bottom:-4px;right:-4px;font-size:7px;font-weight:800;
+  padding:1px 4px;background:#0b0c0e;border:1px solid rgba(255,255,255,.12);border-radius:3px;
+  color:rgba(255,255,255,.55);line-height:1}
+.player-info{flex:1;min-width:0}
+.player-name{font-size:11px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.2}
+.player-name.me-name{color:var(--gold)}
+.player-tag{font-size:8px;color:rgba(255,255,255,.3);font-weight:400}
+.champ-name-lbl{font-size:9px;font-weight:600;color:rgba(255,255,255,.5);margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Divider */
+.divider{height:1px;background:rgba(255,255,255,.05);margin:6px 0}
+
+/* Rank section */
+.rank-row{display:flex;align-items:center;gap:5px;margin-bottom:3px}
+.rank-tier{font-size:12px;font-weight:900;line-height:1}
+.rank-tier.iron{color:var(--iron)}.rank-tier.bronze{color:var(--bronze)}
+.rank-tier.silver{color:var(--silver)}.rank-tier.gold{color:var(--gold-t)}
+.rank-tier.platinum{color:var(--plat)}.rank-tier.emerald{color:var(--emer)}
+.rank-tier.diamond{color:var(--dia)}.rank-tier.master{color:var(--master)}
+.rank-tier.grandmaster{color:var(--gm)}.rank-tier.challenger{color:var(--chal)}
+.rank-tier.unranked{color:rgba(255,255,255,.2)}
+.rank-lp{font-size:8.5px;font-weight:600;color:rgba(255,255,255,.35)}
+.rank-wr{font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:auto}
+.rank-wr.wr-high{background:rgba(74,222,128,.1);color:#4ade80;border:1px solid rgba(74,222,128,.2)}
+.rank-wr.wr-low{background:rgba(239,68,68,.08);color:#f87171;border:1px solid rgba(239,68,68,.18)}
+.rank-wr.wr-med{background:rgba(200,170,110,.08);color:var(--gold);border:1px solid rgba(200,170,110,.2)}
+.rank-wl{font-size:7.5px;color:rgba(255,255,255,.25);display:flex;gap:3px;align-items:center}
+
+/* Champion stats section */
+.champ-stats{display:flex;align-items:center;gap:7px;margin:2px 0}
+.cs-icon{width:26px;height:26px;border-radius:6px;object-fit:cover;
+  border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);flex-shrink:0}
+.cs-info{flex:1;min-width:0}
+.cs-wr{font-size:11px;font-weight:800;color:#fff;line-height:1}
+.cs-wr.wr-good{color:var(--green)}.cs-wr.wr-bad{color:#f87171}
+.cs-games{font-size:7.5px;color:rgba(255,255,255,.3);margin-top:1px}
+.cs-kda{font-size:7.5px;color:rgba(255,255,255,.25)}
+
+/* Live game stats */
+.live-stats{display:flex;align-items:center;gap:0;margin:2px 0}
+.ls-kda{font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;flex:1}
+.ls-k{color:#4ade80}.ls-d{color:#f87171}.ls-a{color:#7dd3fc}.ls-sep{color:rgba(255,255,255,.2)}
+.ls-cs{font-size:8.5px;color:rgba(255,255,255,.3);margin-left:auto}
+
+/* Tags */
+.tags-row{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+.tag{font-size:6.5px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:.05em;white-space:nowrap}
+.tag-hot{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2)}
+.tag-good{background:rgba(74,222,128,.08);color:#4ade80;border:1px solid rgba(74,222,128,.18)}
+.tag-bad{background:rgba(239,68,68,.07);color:#f87171;border:1px solid rgba(239,68,68,.15)}
+.tag-otp{background:rgba(200,170,110,.08);color:var(--gold);border:1px solid rgba(200,170,110,.2)}
+.tag-vet{background:rgba(11,196,227,.07);color:#0bc4e3;border:1px solid rgba(11,196,227,.18)}
+.tag-new{background:rgba(255,255,255,.05);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.1)}
+.tag-machine{background:rgba(192,132,252,.08);color:#c084fc;border:1px solid rgba(192,132,252,.2)}
+
+/* Loading state */
+#loading-msg{display:none;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;gap:12px;color:rgba(255,255,255,.3)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.07);
+  border-top-color:var(--red);animation:spin .9s linear infinite}
+
+/* Streamer mode badge */
+.streamer-badge{font-size:7px;color:rgba(255,255,255,.18);font-style:italic;
+  padding:2px 5px;border:1px solid rgba(255,255,255,.06);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- Titlebar -->
+<div id="titlebar">
+  <div id="brand-gem">A</div>
+  <span id="brand-name">ATAK</span>
+  <div id="title-sep"></div>
+  <span id="title-lbl">ESTADÍSTICAS DE PARTIDA</span>
+  <span id="hint-lbl">Ctrl+Shift+S · Mostrar/Ocultar</span>
+  <button id="close-btn" onclick="closeMe()">✕</button>
+</div>
+
+<!-- Content -->
+<div id="content">
+
+  <!-- Ally Team -->
+  <div class="team-section">
+    <div class="team-label blue">
+      <div class="tl-dot"></div>
+      <span id="ally-lbl">MI EQUIPO</span>
+      <span class="tl-kda" id="ally-kda"></span>
+    </div>
+    <div class="player-row" id="ally-row">
+      <!-- injected by JS -->
+    </div>
+  </div>
+
+  <!-- Enemy Team -->
+  <div class="team-section">
+    <div class="team-label red">
+      <div class="tl-dot"></div>
+      <span id="enemy-lbl">ENEMIGOS</span>
+      <span class="tl-kda" id="enemy-kda"></span>
+    </div>
+    <div class="player-row" id="enemy-row">
+      <!-- injected by JS -->
+    </div>
+  </div>
+
+</div>
+
+<script>
+let ddPatch = null
+let rankData = {}
+let opggData = {}
+let lastGame  = null
+
+const TIER_COLOR = {
+  IRON:'iron', BRONZE:'bronze', SILVER:'silver', GOLD:'gold',
+  PLATINUM:'platinum', EMERALD:'emerald', DIAMOND:'diamond',
+  MASTER:'master', GRANDMASTER:'grandmaster', CHALLENGER:'challenger',
+}
+const TIER_ABBR = {
+  IRON:'Hierro', BRONZE:'Bronce', SILVER:'Plata', GOLD:'Oro',
+  PLATINUM:'Platino', EMERALD:'Esmeralda', DIAMOND:'Diamante',
+  MASTER:'Máster', GRANDMASTER:'Gran Máster', CHALLENGER:'Retador',
+}
+const DIV_ROM = ['I','II','III','IV']
+
+async function getPatch() {
+  if (ddPatch) return ddPatch
+  try { ddPatch = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json())[0] }
+  catch { ddPatch = '15.14.1' }
+  return ddPatch
+}
+
+// Flexible name lookup: port-2999 uses "Name#TAG", LCU champ-select may use "Name" only.
+// Tries exact → base name → case-insensitive base match so both caches work regardless of source.
+function findByName(cache, summonerName) {
+  if (!summonerName || !cache) return null
+  if (cache[summonerName]) return cache[summonerName]
+  const base = summonerName.split('#')[0].toLowerCase()
+  for (const k of Object.keys(cache)) {
+    if (k.toLowerCase() === base || k.toLowerCase().split('#')[0] === base) return cache[k]
+  }
+  return null
+}
+
+const DD_KEY = {'Wukong':'MonkeyKing','Nunu & Willump':'Nunu','Renata Glasc':'Renata','Bel\'Veth':'BelVeth','K\'Sante':'KSante'}
+function champImg(name, patch) {
+  if (!name || !patch) return ''
+  const key = DD_KEY[name] || name.replace(/['\s.&]/g,'')
+  return `https://ddragon.leagueoflegends.com/cdn/${patch}/img/champion/${key}.png`
+}
+
+function wrClass(wr) {
+  if (wr >= 55) return 'wr-high'
+  if (wr < 45)  return 'wr-low'
+  return 'wr-med'
+}
+
+function generateTags(opgg, champStat) {
+  const tags = []
+  if (!opgg) return tags
+  if (opgg.is_hot_streak) tags.push({ text:'Racha caliente 🔥', cls:'tag-hot' })
+  if (opgg.is_fresh_blood) tags.push({ text:'Nuevo en ranked', cls:'tag-new' })
+  if (opgg.is_veteran && !opgg.is_hot_streak) tags.push({ text:'Veterano', cls:'tag-vet' })
+  if (champStat && champStat.play > 0) {
+    const wr = (champStat.win / champStat.play) * 100
+    const play = champStat.play
+    const kda = champStat.death > 0
+      ? (champStat.kill + champStat.assist) / champStat.death / play
+      : 99
+    if (play >= 100) tags.push({ text:`Máquina: ${champStat.champion_name}`, cls:'tag-machine' })
+    if (wr >= 60 && play >= 10) tags.push({ text:'WR alto con champ', cls:'tag-good' })
+    else if (wr < 40 && play >= 10) tags.push({ text:'WR bajo con champ', cls:'tag-bad' })
+    const seasonPlay = opgg.season_play || 0
+    if (seasonPlay > 0 && play / seasonPlay > 0.60 && play >= 20) {
+      tags.push({ text:`OTP ${champStat.champion_name}`, cls:'tag-otp' })
+    }
+    if (kda >= 3 && play >= 10) tags.push({ text:'Alto KDA', cls:'tag-good' })
+    else if (kda < 1.5 && play >= 10) tags.push({ text:'Muere seguido', cls:'tag-bad' })
+  }
+  return tags.slice(0, 3)
+}
+
+function buildCard(player, isMe, side, patch) {
+  const name = player.summonerName || '?'
+  const displayName = name.split('#')[0]
+  const tag  = name.includes('#') ? '#' + name.split('#')[1] : ''
+  const champName = player.championName || ''
+  const level = player.level || 1
+
+  // Data sources — use fuzzy lookup to bridge LCU (no #tag) vs port-2999 (Name#TAG) key formats
+  const rankInfo = findByName(rankData, name) || null
+  const opgg     = findByName(opggData, name) || null
+  const scores   = player.scores || {}
+
+  // Champion stat from OP.GG (the champ they're playing right now)
+  let champStat = null
+  if (opgg?.champion_stats) {
+    const needle = champName.toLowerCase().replace(/['\s.&]/g,'')
+    champStat = opgg.champion_stats.find(c =>
+      c.champion_name.toLowerCase().replace(/['\s.&]/g,'') === needle
+    ) || opgg.champion_stats[0] || null
+  }
+
+  const card = document.createElement('div')
+  card.className = `pcard ${side}-card${isMe ? ' me' : ''}`
+
+  // ─ Top: champ + name ───────────────────────────────────────────────
+  const top = document.createElement('div'); top.className = 'card-top'
+  const cw = document.createElement('div'); cw.className = 'champ-wrap'
+  const ci = document.createElement('img'); ci.className = 'champ-ico'
+  ci.src = champImg(champName, patch)
+  ci.onerror = () => { ci.style.opacity = '.12' }
+  const lvBadge = document.createElement('div'); lvBadge.className = 'champ-lv'
+  lvBadge.textContent = level
+  cw.appendChild(ci); cw.appendChild(lvBadge)
+  top.appendChild(cw)
+
+  const pi = document.createElement('div'); pi.className = 'player-info'
+  const nm = document.createElement('div'); nm.className = 'player-name' + (isMe ? ' me-name' : '')
+  nm.textContent = displayName
+  const tg = document.createElement('div'); tg.className = 'player-tag'
+  tg.textContent = tag || (opgg ? `#${opgg._tagLine || ''}` : '')
+  const cn = document.createElement('div'); cn.className = 'champ-name-lbl'
+  cn.textContent = champName || '—'
+  pi.appendChild(nm); pi.appendChild(tg); pi.appendChild(cn)
+  top.appendChild(pi)
+  card.appendChild(top)
+
+  // ─ Rank ────────────────────────────────────────────────────────────
+  const rankSource = opgg?.rank || rankInfo
+  const hasRank = rankSource && (rankSource.tier || rankSource.wins > 0 || rankSource.lp != null)
+  if (hasRank) {
+    const div1 = document.createElement('div'); div1.className = 'divider'
+    card.appendChild(div1)
+
+    const rr = document.createElement('div'); rr.className = 'rank-row'
+    const tierName = (rankSource.tier || '').toUpperCase()
+    const tierCls  = TIER_COLOR[tierName] || 'unranked'
+    const tierLbl  = TIER_ABBR[tierName] || (tierName || 'Sin clasificar')
+    const divLbl   = (rankSource.division && rankSource.division <= 4) ? ' ' + DIV_ROM[rankSource.division - 1] : ''
+
+    const tierEl = document.createElement('span')
+    tierEl.className = `rank-tier ${tierCls}`
+    tierEl.textContent = tierLbl + divLbl
+    rr.appendChild(tierEl)
+
+    if (rankSource.lp != null) {
+      const lpEl = document.createElement('span'); lpEl.className = 'rank-lp'
+      lpEl.textContent = rankSource.lp + ' LP'
+      rr.appendChild(lpEl)
+    }
+
+    const wr = rankSource.win_rate ?? (rankSource.wins + rankSource.losses > 0
+      ? Math.round(rankSource.wins / (rankSource.wins + rankSource.losses) * 100) : null)
+    if (wr != null) {
+      const wrEl = document.createElement('span')
+      wrEl.className = `rank-wr ${wrClass(wr)}`
+      wrEl.textContent = wr + '%'
+      rr.appendChild(wrEl)
+    }
+    card.appendChild(rr)
+
+    if (rankSource.wins != null) {
+      const wl = document.createElement('div'); wl.className = 'rank-wl'
+      wl.textContent = `${rankSource.wins}V / ${rankSource.losses || 0}D`
+      card.appendChild(wl)
+    }
+  } else {
+    const div1 = document.createElement('div'); div1.className = 'divider'
+    card.appendChild(div1)
+    const unr = document.createElement('div')
+    unr.style.cssText = 'font-size:8px;color:rgba(255,255,255,.15);padding:2px 0;display:flex;align-items:center;gap:5px'
+    const dot = document.createElement('span')
+    dot.style.cssText = 'width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.1);flex-shrink:0;animation:spin .9s linear infinite'
+    const txt = document.createElement('span'); txt.textContent = 'Obteniendo rango...'
+    unr.appendChild(dot); unr.appendChild(txt)
+    card.appendChild(unr)
+  }
+
+  // ─ Champion stats (OP.GG) ──────────────────────────────────────────
+  if (champStat && champStat.play > 0) {
+    const div2 = document.createElement('div'); div2.className = 'divider'
+    card.appendChild(div2)
+
+    const cs = document.createElement('div'); cs.className = 'champ-stats'
+    const csIcon = document.createElement('img'); csIcon.className = 'cs-icon'
+    csIcon.src = champImg(champStat.champion_name, patch)
+    csIcon.onerror = () => { csIcon.style.opacity = '.1' }
+    cs.appendChild(csIcon)
+
+    const csInfo = document.createElement('div'); csInfo.className = 'cs-info'
+    const champWr = Math.round((champStat.win / champStat.play) * 100)
+    const wrEl = document.createElement('div')
+    wrEl.className = 'cs-wr ' + (champWr >= 55 ? 'wr-good' : champWr < 45 ? 'wr-bad' : '')
+    wrEl.textContent = champWr + '% WR'
+    const gamesEl = document.createElement('div'); gamesEl.className = 'cs-games'
+    gamesEl.textContent = `${champStat.play} partidas · ${champStat.win}V ${champStat.lose}D`
+    const champKda = champStat.death > 0
+      ? ((champStat.kill + champStat.assist) / champStat.death / champStat.play).toFixed(1) + ' KDA'
+      : 'KDA Perfecto'
+    const kdaEl = document.createElement('div'); kdaEl.className = 'cs-kda'
+    kdaEl.textContent = champKda
+    csInfo.appendChild(wrEl); csInfo.appendChild(gamesEl); csInfo.appendChild(kdaEl)
+    cs.appendChild(csIcon); cs.appendChild(csInfo)
+    card.appendChild(cs)
+  } else if (opgg && !champStat) {
+    const div2 = document.createElement('div'); div2.className = 'divider'
+    card.appendChild(div2)
+    const noData = document.createElement('div')
+    noData.style.cssText = 'font-size:7.5px;color:rgba(255,255,255,.18);font-style:italic'
+    noData.textContent = 'Sin datos con ' + champName
+    card.appendChild(noData)
+  }
+
+  // ─ Live game KDA/CS ────────────────────────────────────────────────
+  const k = scores.kills ?? 0
+  const d = scores.deaths ?? 0
+  const a = scores.assists ?? 0
+  const cs2 = scores.creepScore ?? 0
+  if (k + d + a + cs2 > 0) {
+    const div3 = document.createElement('div'); div3.className = 'divider'
+    card.appendChild(div3)
+    const ls = document.createElement('div'); ls.className = 'live-stats'
+    const kdaEl = document.createElement('div'); kdaEl.className = 'ls-kda'
+    kdaEl.innerHTML = `<span class="ls-k">${k}</span><span class="ls-sep">/</span><span class="ls-d">${d}</span><span class="ls-sep">/</span><span class="ls-a">${a}</span>`
+    const csEl = document.createElement('div'); csEl.className = 'ls-cs'
+    csEl.textContent = cs2 + ' CS'
+    ls.appendChild(kdaEl); ls.appendChild(csEl)
+    card.appendChild(ls)
+  }
+
+  // ─ Tags ────────────────────────────────────────────────────────────
+  const tags = generateTags(opgg, champStat)
+  if (tags.length) {
+    const tagsRow = document.createElement('div'); tagsRow.className = 'tags-row'
+    for (const t of tags) {
+      const el = document.createElement('span'); el.className = `tag ${t.cls}`
+      el.textContent = t.text; tagsRow.appendChild(el)
+    }
+    card.appendChild(tagsRow)
+  }
+
+  // Streamer mode
+  if (!name || name === '?') {
+    const sm = document.createElement('div'); sm.className = 'streamer-badge'
+    sm.textContent = 'Modo streamer'; card.appendChild(sm)
+  }
+
+  return card
+}
+
+async function render(game) {
+  if (!game) return
+  lastGame = game
+  const patch = await getPatch()
+
+  const localName = game.activePlayer?.summonerName || ''
+  const localPlayer = (game.allPlayers || []).find(p => p.summonerName === localName)
+  const localTeam   = localPlayer?.team || 'ORDER'
+
+  const allies  = (game.allPlayers || []).filter(p => p.team === localTeam)
+  const enemies = (game.allPlayers || []).filter(p => p.team !== localTeam)
+
+  // Team KDA totals
+  function teamKdaStr(players) {
+    const k = players.reduce((s,p)=>s+(p.scores?.kills||0),0)
+    const d = players.reduce((s,p)=>s+(p.scores?.deaths||0),0)
+    const a = players.reduce((s,p)=>s+(p.scores?.assists||0),0)
+    return `${k}/${d}/${a}`
+  }
+  document.getElementById('ally-kda').textContent  = allies.length  ? teamKdaStr(allies)  : ''
+  document.getElementById('enemy-kda').textContent = enemies.length ? teamKdaStr(enemies) : ''
+  document.getElementById('ally-lbl').textContent  = localTeam === 'ORDER' ? 'MI EQUIPO (ORDER)' : 'MI EQUIPO (CHAOS)'
+  document.getElementById('enemy-lbl').textContent = localTeam === 'ORDER' ? 'ENEMIGOS (CHAOS)'  : 'ENEMIGOS (ORDER)'
+
+  const allyRow  = document.getElementById('ally-row')
+  const enemyRow = document.getElementById('enemy-row')
+  allyRow.innerHTML  = ''
+  enemyRow.innerHTML = ''
+
+  for (const p of allies)  allyRow.appendChild(buildCard(p,  p.summonerName === localName, 'blue', patch))
+  for (const p of enemies) enemyRow.appendChild(buildCard(p, false, 'red', patch))
+}
+
+function closeMe() {
+  if (typeof overwolf !== 'undefined') {
+    try {
+      const bg = overwolf.windows.getMainWindow()
+      if (bg?.hidePlayerStats) { bg.hidePlayerStats(); return }
+    } catch {}
+    overwolf.windows.getCurrentWindow(r => { if (r.status==='success') overwolf.windows.close(r.window.id) })
+  }
+}
+
+if (typeof overwolf !== 'undefined') {
+  overwolf.windows.onMessageReceived.addListener(msg => {
+    const c = msg?.content; if (!c) return
+    if (c.type === 'player-stats-data') {
+      if (c.ranks) rankData = { ...rankData, ...c.ranks }
+      if (c.opgg)  opggData = { ...opggData, ...c.opgg  }
+      if (c.game)  render(c.game)
+    }
+    if (c.type === 'player-stats-update') {
+      if (c.ranks) rankData = { ...rankData, ...c.ranks }
+      if (c.opgg)  opggData = { ...opggData, ...c.opgg  }
+      if (c.game)  render(c.game)
+    }
+  })
+}
+</script>
+</body>
+</html>

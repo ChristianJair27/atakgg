@@ -1,253 +1,337 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>ATAK — Match Summary</title>
+<title>ATAK — Fin de Partida</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{width:900px;min-height:600px;overflow-x:hidden;user-select:none}
+html,body{width:1000px;min-height:680px;overflow:hidden;user-select:none;
+  font-family:'Segoe UI',system-ui,sans-serif;color:#e8e8ea;background:transparent}
 :root{
-  --gold:#c89b3c;--goldlt:#f0e6d3;--golddm:#785a28;
-  --teal:#0bc4e3;--red:#ef4444;--green:#22c55e;--blue:#3b82f6;
-  --glass:rgba(255,255,255,.05);--glass-b:rgba(255,255,255,.09);
-  --r:10px;
+  --win:#0bc4e3;  --win2:rgba(11,196,227,.12); --winb:rgba(11,196,227,.22);
+  --loss:#ef4444; --loss2:rgba(239,68,68,.11); --lossb:rgba(239,68,68,.24);
+  --gold:#c8aa6e; --green:#4ade80; --purple:#c084fc;
+  --bg:#0d0e10;   --surf:rgba(255,255,255,.04); --bord:rgba(255,255,255,.07);
+  --dim:rgba(255,255,255,.36);
 }
-body{
-  font-family:'Segoe UI',system-ui,sans-serif;color:#fff;
-  background:
-    radial-gradient(ellipse 100% 40% at 50% -5%,rgba(11,196,227,.07),transparent 50%),
-    linear-gradient(180deg,#010a13 0%,#060b1a 100%);
-}
-::-webkit-scrollbar{width:3px}
-::-webkit-scrollbar-thumb{background:rgba(200,155,60,.2);border-radius:2px}
+body{background:var(--bg);border-radius:10px;overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.07)}
 
-.g{
-  background:var(--glass);backdrop-filter:blur(24px) saturate(140%);-webkit-backdrop-filter:blur(24px) saturate(140%);
-  border:1px solid var(--glass-b);border-radius:var(--r);position:relative;overflow:hidden;
-}
-.g::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);pointer-events:none}
-.g.gold-top::before{background:linear-gradient(90deg,transparent,rgba(200,155,60,.4),transparent)}
-.g.blue-top::before{background:linear-gradient(90deg,transparent,rgba(59,130,246,.45),transparent)}
-.g.red-top::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.45),transparent)}
-.g.teal-top::before{background:linear-gradient(90deg,transparent,rgba(11,196,227,.4),transparent)}
-
-/* ── Loading state ── */
-#loading-state{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  height:600px;gap:18px;
-}
-.ld-ring{
-  width:48px;height:48px;border-radius:50%;
-  border:3px solid rgba(200,155,60,.1);
-  border-top-color:var(--gold);
-  animation:spin 1.1s linear infinite;
-}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
 @keyframes spin{to{transform:rotate(360deg)}}
-#ld-text{font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.2);
-  animation:shimm 1.4s ease-in-out infinite}
-@keyframes shimm{0%,100%{opacity:.3}50%{opacity:.9}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pop{0%{transform:scale(.6)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes shimmer{0%,100%{opacity:0;transform:translateX(-100%)}50%{opacity:1;transform:translateX(200%)}}
+@keyframes particleUp{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-60px) scale(0)}}
 
-/* ── Main layout (hidden until data) ── */
-#main{display:none;flex-direction:column;gap:0}
+/* ── Loader ── */
+#loader{display:flex;flex-direction:column;align-items:center;justify-content:center;height:680px;gap:14px}
+.spin{width:40px;height:40px;border-radius:50%;border:2.5px solid rgba(200,170,110,.1);border-top-color:var(--gold);animation:spin 1s linear infinite}
+.spin-lbl{font-size:8px;font-weight:700;letter-spacing:.38em;color:rgba(255,255,255,.18)}
 
-/* ── Result banner ── */
-#result-banner{
-  height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;
-  position:relative;overflow:hidden;-webkit-app-region:drag;flex-shrink:0;
-}
-#result-banner.victory{
-  background:linear-gradient(90deg,rgba(11,196,227,.15) 0%,rgba(33,82,255,.1) 50%,rgba(11,196,227,.05) 100%);
-  border-bottom:1px solid rgba(11,196,227,.25);
-}
-#result-banner.defeat{
-  background:linear-gradient(90deg,rgba(239,68,68,.12) 0%,rgba(185,28,28,.08) 50%,rgba(239,68,68,.04) 100%);
-  border-bottom:1px solid rgba(239,68,68,.22);
-}
-#result-shimmer{
-  position:absolute;top:0;left:-100%;width:60%;height:100%;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.04),transparent);
-  animation:shimpass 3s ease-in-out infinite;pointer-events:none;
-}
-@keyframes shimpass{0%{left:-100%}50%{left:150%}100%{left:150%}}
-#result-txt{font-size:36px;font-weight:900;letter-spacing:-.01em;line-height:1}
-#result-banner.victory #result-txt{color:var(--teal);text-shadow:0 0 40px rgba(11,196,227,.45)}
-#result-banner.defeat  #result-txt{color:var(--red);text-shadow:0 0 40px rgba(239,68,68,.4)}
-#result-meta{text-align:right;-webkit-app-region:no-drag}
-#result-mode{font-size:9px;font-weight:700;letter-spacing:.3em;color:rgba(255,255,255,.25)}
-#result-time{font-size:22px;font-weight:900;color:rgba(255,255,255,.6);font-family:monospace}
-#close-btn{
-  -webkit-app-region:no-drag;position:absolute;top:10px;right:10px;
-  width:26px;height:26px;border-radius:8px;background:transparent;border:none;
-  cursor:pointer;color:rgba(255,255,255,.25);font-size:14px;transition:.15s;
-  display:flex;align-items:center;justify-content:center;
-}
-#close-btn:hover{background:rgba(239,68,68,.15);color:var(--red)}
+/* ── App shell ── */
+#app{display:none;flex-direction:column;height:680px}
 
-/* ── Your performance strip ── */
-#my-perf{
-  display:flex;align-items:center;gap:0;padding:10px 14px;flex-shrink:0;
-  border-bottom:1px solid rgba(255,255,255,.04);
+/* ── Title bar (drag region) ── */
+#bar{
+  display:flex;align-items:center;justify-content:space-between;
+  height:40px;padding:0 14px;flex-shrink:0;
+  -webkit-app-region:drag;
+  border-bottom:1px solid rgba(255,255,255,.05);
+  position:relative;z-index:10;
 }
-#my-champ-wrap{position:relative;flex-shrink:0;margin-right:12px}
-#my-champ-img{width:54px;height:54px;border-radius:9px;object-fit:cover;border:2px solid rgba(200,155,60,.35);display:block}
-#my-champ-level{
-  position:absolute;bottom:-4px;right:-4px;font-size:8px;font-weight:900;
-  padding:1px 5px;background:#010a13;border:1px solid rgba(255,255,255,.1);border-radius:4px;color:rgba(255,255,255,.7)
+#bar-result{display:flex;align-items:center;gap:10px}
+#bar-logo{width:24px;height:24px;border-radius:5px;overflow:hidden;flex-shrink:0}
+#bar-logo img{width:100%;height:100%;object-fit:cover;display:block}
+#bar-verdict{font-size:13px;font-weight:900;letter-spacing:.06em}
+.bar-victory #bar-verdict{color:var(--win)}
+.bar-defeat  #bar-verdict{color:var(--loss)}
+#bar-sep{width:1px;height:14px;background:rgba(255,255,255,.1);flex-shrink:0}
+#bar-mode{font-size:7.5px;font-weight:700;letter-spacing:.2em;color:rgba(255,255,255,.3)}
+#bar-time{font-size:13px;font-weight:800;color:rgba(255,255,255,.45);font-variant-numeric:tabular-nums}
+#bar-champ{display:flex;align-items:center;gap:6px}
+#bar-champ-img{width:22px;height:22px;border-radius:5px;object-fit:cover;border:1px solid rgba(255,255,255,.1)}
+#bar-champ-name{font-size:11px;font-weight:700;color:rgba(255,255,255,.65)}
+#bar-kda{font-size:11px;font-weight:800;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums}
+#bar-right{display:flex;align-items:center;gap:4px;-webkit-app-region:no-drag}
+.wbtn{width:24px;height:24px;border:none;cursor:pointer;border-radius:5px;background:transparent;
+  color:rgba(255,255,255,.3);font-size:11px;display:flex;align-items:center;justify-content:center;transition:.12s}
+.wbtn:hover{background:rgba(255,255,255,.07);color:#fff}
+#close-btn:hover{background:rgba(239,68,68,.14);color:var(--loss)}
+
+/* ── Result strip ── */
+#result-strip{
+  display:flex;align-items:center;gap:0;flex-shrink:0;
+  height:56px;padding:0 0;position:relative;overflow:hidden;
 }
-#my-kda-big{display:flex;align-items:baseline;gap:4px;margin-right:20px}
-.mkda-v{font-size:28px;font-weight:900;line-height:1}
-.mkda-sep{font-size:20px;color:rgba(255,255,255,.15);font-weight:300}
-#my-grade{
-  font-size:36px;font-weight:900;width:42px;text-align:center;flex-shrink:0;
-  margin-right:14px;font-style:italic;
+.bar-victory #result-strip{background:linear-gradient(90deg,rgba(11,196,227,.18),rgba(11,196,227,.06) 60%,transparent)}
+.bar-defeat  #result-strip{background:linear-gradient(90deg,rgba(239,68,68,.16),rgba(239,68,68,.05) 60%,transparent)}
+#strip-shimmer{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,transparent 10%,rgba(255,255,255,.05) 50%,transparent 90%);
+  animation:shimmer 5s ease-in-out infinite}
+#strip-champ{
+  position:relative;flex-shrink:0;margin-left:18px;
+  width:62px;height:62px;border-radius:12px;overflow:hidden;
+  margin-top:-6px;
 }
-.grade-s{color:#f0e6d3}.grade-a{color:var(--teal)}.grade-b{color:var(--green)}.grade-c{color:var(--gold)}.grade-d{color:var(--red)}
-.my-stat-col{display:flex;flex-direction:column;gap:1px;min-width:60px}
-.ms-v{font-size:14px;font-weight:800;color:#fff;line-height:1}
-.ms-l{font-size:6px;font-weight:700;letter-spacing:.2em;color:rgba(255,255,255,.22)}
-.vs-div{width:1px;height:36px;background:rgba(255,255,255,.05);margin:0 12px;align-self:center}
-#my-items-row{display:flex;gap:3px;margin-left:auto}
-.my-item{width:32px;height:32px;border-radius:6px;object-fit:cover;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04)}
-.my-item.empty{opacity:.15}
+#strip-champ img{width:100%;height:100%;object-fit:cover;display:block}
+#strip-main{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 14px;flex:1}
+#strip-verdict{font-size:28px;font-weight:900;letter-spacing:-.01em;line-height:1}
+.bar-victory #strip-verdict{color:var(--win);text-shadow:0 0 32px rgba(11,196,227,.45)}
+.bar-defeat  #strip-verdict{color:var(--loss);text-shadow:0 0 32px rgba(239,68,68,.4)}
+#strip-sub{font-size:8px;font-weight:700;letter-spacing:.22em;color:rgba(255,255,255,.28)}
+#strip-kda-block{display:flex;align-items:center;gap:5px;margin-left:auto;padding-right:8px}
+.sk-num{font-size:28px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+.sk-sep{font-size:16px;color:rgba(255,255,255,.18);font-weight:300}
+#strip-grade{
+  font-size:44px;font-weight:900;font-style:italic;line-height:1;
+  filter:drop-shadow(0 0 10px currentColor);padding:0 16px;flex-shrink:0;
+}
+.gs{color:#f0e6d3}.ga{color:var(--win)}.gb{color:var(--green)}.gc{color:var(--gold)}.gd{color:var(--loss)}
+
+/* ── Stats + items row ── */
+#stats-row{
+  display:flex;align-items:center;gap:6px;
+  padding:8px 18px;border-bottom:1px solid var(--bord);flex-shrink:0;
+  background:rgba(0,0,0,.18);
+}
+.stat-pill{
+  display:flex;flex-direction:column;align-items:center;gap:1px;
+  padding:5px 12px;background:var(--surf);border:1px solid var(--bord);border-radius:7px;
+}
+.sp-v{font-size:14px;font-weight:800;line-height:1}
+.sp-l{font-size:6px;font-weight:700;letter-spacing:.2em;color:var(--dim);margin-top:1px}
+#items-wrap{display:flex;gap:3px;margin-left:auto}
+.iico{
+  width:32px;height:32px;border-radius:6px;object-fit:cover;
+  border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);
+}
+.iico.empty{opacity:.1;border-style:dashed}
+.iico.trinket{border-color:rgba(200,170,110,.2);opacity:.7}
 
 /* ── Scoreboard ── */
-#scoreboard{flex:1;overflow-y:auto;padding:6px 0 10px}
-.team-block{margin-bottom:4px}
-.team-hdr{
-  display:flex;align-items:center;gap:8px;padding:5px 14px;
-  border-bottom:1px solid rgba(255,255,255,.04);
-}
-.team-hdr.blue{background:rgba(59,130,246,.07);border-top:1px solid rgba(59,130,246,.12)}
-.team-hdr.red{background:rgba(239,68,68,.07);border-top:1px solid rgba(239,68,68,.12)}
-.team-hdr.victory-hdr{background:rgba(11,196,227,.07);border-top:1px solid rgba(11,196,227,.15)}
-.team-hdr.defeat-hdr{background:rgba(239,68,68,.05);border-top:1px solid rgba(239,68,68,.1)}
-.th-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.th-blue .th-dot{background:var(--blue)}.th-red .th-dot{background:var(--red)}
-.th-name{font-size:8px;font-weight:700;letter-spacing:.2em;flex:1}
-.th-blue .th-name{color:rgba(59,130,246,.8)}.th-red .th-name{color:rgba(239,68,68,.8)}
-.th-win-badge{font-size:7px;font-weight:700;letter-spacing:.15em;padding:2px 8px;border-radius:20px}
-.th-win-badge.win{background:rgba(11,196,227,.12);color:var(--teal);border:1px solid rgba(11,196,227,.25)}
-.th-win-badge.loss{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.2)}
-.th-col-hdrs{margin-left:auto;display:flex;gap:0;font-size:6.5px;font-weight:700;letter-spacing:.15em;color:rgba(255,255,255,.2)}
-.th-ch{width:55px;text-align:center}.th-ch.wide{width:80px}
+#scoreboard{flex:1;overflow-y:auto;min-height:0}
 
-/* Player row */
+.team-block{margin-bottom:1px}
+
+/* Team header */
+.team-hdr{
+  display:grid;
+  grid-template-columns: 184px 1fr 200px 78px 56px 60px 1fr;
+  align-items:center;
+  padding:5px 18px;border-top:1px solid;border-bottom:1px solid;
+}
+.th-blu{background:rgba(59,130,246,.07);border-color:rgba(59,130,246,.14)}
+.th-red{background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.12)}
+.th-identity{display:flex;align-items:center;gap:7px}
+.th-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.th-blu .th-dot{background:#3b82f6}.th-red .th-dot{background:var(--loss)}
+.th-name{font-size:7.5px;font-weight:700;letter-spacing:.2em}
+.th-blu .th-name{color:rgba(100,150,255,.7)}.th-red .th-name{color:rgba(255,100,110,.7)}
+.th-badge{font-size:7px;font-weight:700;letter-spacing:.1em;padding:2px 8px;border-radius:20px}
+.th-badge.w{background:rgba(11,196,227,.1);color:var(--win);border:1px solid rgba(11,196,227,.2)}
+.th-badge.l{background:rgba(239,68,68,.08);color:var(--loss);border:1px solid rgba(239,68,68,.18)}
+.th-totalkda{font-size:10px;font-weight:700;color:rgba(255,255,255,.4);font-variant-numeric:tabular-nums}
+.th-gold{font-size:9px;font-weight:700;color:var(--gold);text-align:right}
+/* column header labels aligned with grid */
+.th-col-lbl{font-size:6px;font-weight:700;letter-spacing:.18em;color:rgba(255,255,255,.18);text-align:center}
+.th-col-lbl.dmg{text-align:right;padding-right:4px}
+
+/* Player row — same 7-column grid */
 .prow{
-  display:flex;align-items:center;gap:0;padding:5px 14px;
-  border-bottom:1px solid rgba(255,255,255,.025);
-  transition:background .12s;cursor:default;
+  display:grid;
+  grid-template-columns: 184px 1fr 200px 78px 56px 60px 1fr;
+  align-items:center;
+  padding:5px 18px 5px 18px;
+  border-bottom:1px solid rgba(255,255,255,.028);
+  transition:background .1s;cursor:default;
+  animation:fadeUp .3s ease both;
 }
 .prow:hover{background:rgba(255,255,255,.02)}
-.prow.is-me{background:rgba(200,155,60,.05);border-left:2px solid rgba(200,155,60,.35)}
-.prow.is-me:hover{background:rgba(200,155,60,.07)}
-.pr-champ{width:30px;height:30px;border-radius:7px;object-fit:cover;flex-shrink:0;border:1px solid rgba(255,255,255,.08);margin-right:8px}
-.pr-name{width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:700;color:rgba(255,255,255,.75)}
-.pr-name.me{color:var(--gold)}
-.pr-multi{font-size:7px;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:3px;
-  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5)}
-.pr-multi.penta{background:rgba(239,68,68,.12);color:var(--red);border-color:rgba(239,68,68,.3)}
-.pr-multi.quadra{background:rgba(168,85,247,.1);color:#a855f7;border-color:rgba(168,85,247,.3)}
-.pr-multi.triple{background:rgba(11,196,227,.08);color:var(--teal);border-color:rgba(11,196,227,.25)}
-.pr-kda{width:55px;text-align:center;font-size:9.5px;font-weight:700;color:rgba(255,255,255,.7)}
-.pr-kda .dk{color:var(--green)}.pr-kda .dd{color:var(--red)}.pr-kda .da{color:var(--blue)}
-.pr-cs{width:50px;text-align:center;font-size:8px;color:rgba(255,255,255,.4);font-weight:600}
-.pr-gold{width:52px;text-align:center;font-size:8.5px;font-weight:700;color:var(--gold)}
-.pr-items{display:flex;gap:2px;width:220px;flex-shrink:0}
-.pi{width:24px;height:24px;border-radius:4px;object-fit:cover;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04)}
-.pi.empty{opacity:.1;border-style:dashed}
-.pi.trinket{border-color:rgba(200,155,60,.2)}
-.pr-dmg{flex:1;padding-left:10px;display:flex;align-items:center;gap:5px}
-.dmg-bar{flex:1;height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;position:relative}
-.dmg-fill{height:100%;border-radius:3px;transition:width .8s ease}
-.dmg-fill.ally{background:linear-gradient(90deg,rgba(11,196,227,.7),rgba(11,196,227,.9))}
-.dmg-fill.enemy{background:linear-gradient(90deg,rgba(239,68,68,.6),rgba(239,68,68,.8))}
-.dmg-txt{font-size:7.5px;font-weight:700;color:rgba(255,255,255,.35);min-width:34px;text-align:right;flex-shrink:0}
-.pr-vs{width:30px;text-align:center;font-size:7.5px;color:rgba(168,85,247,.7)}
+.prow.me{background:rgba(200,170,110,.04);border-left:2px solid rgba(200,170,110,.4);padding-left:16px}
+.prow.me:hover{background:rgba(200,170,110,.06)}
 
-/* Arena placement badge */
-.arena-place{
-  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  font-size:12px;font-weight:900;flex-shrink:0;margin-right:8px;
+/* Col 1: champ + name */
+.col-identity{display:flex;align-items:center;gap:8px}
+.champ-wrap{position:relative;flex-shrink:0}
+.champ-img{width:38px;height:38px;border-radius:8px;object-fit:cover;display:block;
+  border:1px solid rgba(255,255,255,.08)}
+.champ-lv{
+  position:absolute;bottom:-4px;right:-4px;
+  font-size:7px;font-weight:800;padding:1px 3px;line-height:1;
+  background:#0d0e10;border:1px solid rgba(255,255,255,.1);border-radius:3px;
+  color:rgba(255,255,255,.5);
 }
-.arena-place.p1{background:rgba(200,155,60,.2);color:#f0e6d3;border:2px solid rgba(200,155,60,.5)}
-.arena-place.p2{background:rgba(148,163,184,.15);color:#cbd5e1;border:2px solid rgba(148,163,184,.35)}
-.arena-place.p3{background:rgba(184,115,64,.15);color:#b87340;border:2px solid rgba(184,115,64,.35)}
-.arena-place.pX{background:rgba(255,255,255,.05);color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.1)}
+.player-name{font-size:10px;font-weight:700;color:rgba(255,255,255,.72);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px}
+.player-name.me{color:var(--gold)}
+.player-tags{display:flex;gap:3px;margin-top:2px;flex-wrap:nowrap}
+.ptag{font-size:6px;font-weight:800;padding:1px 5px;border-radius:3px;letter-spacing:.08em;line-height:1.3;white-space:nowrap}
+.ptag.mvp{background:rgba(200,170,110,.16);color:#f0e6d3;border:1px solid rgba(200,170,110,.35)}
+.ptag.penta{background:rgba(239,68,68,.14);color:var(--loss);border:1px solid rgba(239,68,68,.3)}
+.ptag.quadra{background:rgba(192,132,252,.12);color:var(--purple);border:1px solid rgba(192,132,252,.3)}
+.ptag.triple{background:rgba(11,196,227,.08);color:var(--win);border:1px solid rgba(11,196,227,.2)}
+.ptag.double{background:rgba(255,255,255,.06);color:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.1)}
+.ptag.fb{background:rgba(255,200,50,.08);color:#f5c842;border:1px solid rgba(255,200,50,.22)}
 
-/* ── ATAK footer ── */
+/* Col 2: performance tags */
+.col-perf{display:flex;flex-direction:column;gap:3px;justify-content:center;padding:0 4px}
+.te{font-size:6px;font-weight:800;letter-spacing:.07em;padding:2px 6px;border-radius:3px;white-space:nowrap;
+  display:inline-block;width:fit-content}
+.te-good{background:rgba(74,222,128,.08);color:#4ade80;border:1px solid rgba(74,222,128,.18)}
+.te-bad{background:rgba(239,68,68,.08);color:#f87171;border:1px solid rgba(239,68,68,.18)}
+.te-warn{background:rgba(250,200,60,.07);color:#f5c842;border:1px solid rgba(250,200,60,.18)}
+.te-sup{background:rgba(11,196,227,.07);color:var(--win);border:1px solid rgba(11,196,227,.18)}
+.te-epic{background:rgba(192,132,252,.1);color:var(--purple);border:1px solid rgba(192,132,252,.28)}
+.te-legendary{background:rgba(239,68,68,.14);color:var(--loss);border:1px solid rgba(239,68,68,.32)}
+.te-imm{background:rgba(200,170,110,.1);color:var(--gold);border:1px solid rgba(200,170,110,.28)}
+
+/* Col 3: items */
+.col-items{display:flex;gap:2px;align-items:center}
+.pi{width:24px;height:24px;border-radius:5px;object-fit:cover;
+  border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);
+  flex-shrink:0;transition:.12s;}
+.pi:hover{transform:scale(1.5);z-index:20;position:relative;box-shadow:0 4px 16px rgba(0,0,0,.8)}
+.pi.empty{opacity:.1;border-style:dashed}
+.pi.trinket{border-color:rgba(200,170,110,.18);opacity:.65}
+.pi-spacer{width:4px;flex-shrink:0;opacity:.2;font-size:9px;color:rgba(255,255,255,.2);
+  display:flex;align-items:center;justify-content:center}
+
+/* Col 4: KDA */
+.col-kda{display:flex;flex-direction:column;align-items:center;gap:1px}
+.kda-nums{font-size:11px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.kn-k{color:var(--green)}.kn-s{color:rgba(255,255,255,.18)}.kn-d{color:var(--loss)}.kn-a{color:var(--win)}
+.kda-ratio{font-size:7.5px;font-weight:600;color:var(--dim);margin-top:1px}
+.kda-ratio.good{color:var(--win)}.kda-ratio.great{color:var(--green)}
+
+/* Col 5: CS */
+.col-cs{display:flex;flex-direction:column;align-items:center;gap:1px}
+.cs-num{font-size:11px;font-weight:700;color:rgba(255,255,255,.65)}
+.cs-min{font-size:6.5px;color:var(--dim);font-weight:600}
+
+/* Col 6: KP% */
+.col-kp{display:flex;flex-direction:column;align-items:center;gap:1px}
+.kp-num{font-size:11px;font-weight:800}
+.kp-lbl{font-size:6.5px;font-weight:700;color:var(--dim)}
+
+/* Col 7: Damage */
+.col-dmg{display:flex;flex-direction:column;gap:3px;padding-left:8px;min-width:0}
+.dmg-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.dmg-num{font-size:10px;font-weight:700;white-space:nowrap}
+.dmg-bar-wrap{width:100%;height:4px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden}
+.dmg-bar-fill{height:100%;border-radius:2px;width:0;transition:width .9s cubic-bezier(.22,1,.36,1)}
+.fill-ally{background:linear-gradient(90deg,rgba(11,196,227,.5),rgba(11,196,227,.9))}
+.fill-enemy{background:linear-gradient(90deg,rgba(239,68,68,.5),rgba(239,68,68,.9))}
+.fill-arena{background:linear-gradient(90deg,rgba(200,170,110,.5),rgba(200,170,110,.9))}
+
+/* ── Arena placement badge ── */
+.arena-badge{
+  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:900;flex-shrink:0;margin-right:6px;
+}
+.ap1{background:rgba(200,170,110,.18);color:#f0e6d3;border:2px solid rgba(200,170,110,.4)}
+.ap2{background:rgba(148,163,184,.1);color:#cbd5e1;border:1.5px solid rgba(148,163,184,.3)}
+.ap3{background:rgba(180,115,64,.1);color:#c87a40;border:1.5px solid rgba(180,115,64,.3)}
+.apX{background:rgba(255,255,255,.04);color:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.08)}
+
+/* ── Footer ── */
 #footer{
   display:flex;align-items:center;justify-content:space-between;
-  padding:8px 14px;border-top:1px solid rgba(255,255,255,.04);flex-shrink:0;
+  padding:8px 18px;border-top:1px solid rgba(255,255,255,.05);flex-shrink:0;
+  background:rgba(0,0,0,.22);-webkit-app-region:drag;
 }
-#footer-brand{display:flex;align-items:center;gap:6px}
-#footer-gem{width:14px;height:14px;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);
-  background:linear-gradient(135deg,var(--gold),var(--golddm))}
-#footer-nm{font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(200,155,60,.5)}
-#open-web-btn{
-  font-size:7.5px;font-weight:700;letter-spacing:.15em;padding:4px 14px;border-radius:6px;
-  background:rgba(200,155,60,.08);border:1px solid rgba(200,155,60,.2);color:rgba(200,155,60,.6);
-  cursor:pointer;transition:.15s;-webkit-app-region:no-drag;
+#ft-brand{display:flex;align-items:center;gap:8px;-webkit-app-region:no-drag}
+#ft-logo{width:20px;height:20px;border-radius:4px;overflow:hidden;flex-shrink:0}
+#ft-logo img{width:100%;height:100%;object-fit:cover;display:block}
+#ft-name{font-size:8px;font-weight:700;letter-spacing:.2em;color:rgba(200,170,110,.4)}
+#view-btn{
+  font-size:8px;font-weight:700;letter-spacing:.12em;padding:5px 16px;border-radius:7px;
+  cursor:pointer;-webkit-app-region:no-drag;transition:.15s;
+  background:rgba(11,196,227,.06);border:1px solid rgba(11,196,227,.18);color:rgba(11,196,227,.55);
 }
-#open-web-btn:hover{background:rgba(200,155,60,.14);color:var(--gold)}
+#view-btn:hover{background:rgba(11,196,227,.12);color:var(--win);border-color:rgba(11,196,227,.32)}
+
+/* ── Victory particles ── */
+.particle{
+  position:fixed;pointer-events:none;border-radius:50%;
+  animation:particleUp 1.4s ease-out both;
+}
 </style>
 </head>
 <body>
 
-<!-- Loading -->
-<div id="loading-state">
-  <div class="ld-ring"></div>
-  <div id="ld-text">PROCESSING MATCH DATA</div>
+<!-- Loader -->
+<div id="loader">
+  <div class="spin"></div>
+  <div class="spin-lbl">PROCESANDO DATOS DE PARTIDA</div>
 </div>
 
-<!-- Main (hidden until data arrives) -->
-<div id="main">
+<!-- App -->
+<div id="app">
 
-  <!-- Result banner -->
-  <div id="result-banner">
-    <div id="result-shimmer"></div>
-    <span id="result-txt">—</span>
-    <div id="result-meta">
-      <div id="result-mode">CLASSIC</div>
-      <div id="result-time">0:00</div>
+  <!-- Title bar -->
+  <div id="bar">
+    <div id="bar-result">
+      <div id="bar-logo"><img src="atak-logo.png" alt="ATAK"></div>
+      <span id="bar-verdict">—</span>
+      <div id="bar-sep"></div>
+      <span id="bar-mode">—</span>
+      <span id="bar-time">0:00</span>
+      <div id="bar-sep" style="opacity:.5"></div>
+      <div id="bar-champ">
+        <img id="bar-champ-img" src="" alt="" style="display:none">
+        <span id="bar-champ-name"></span>
+      </div>
+      <span id="bar-kda"></span>
     </div>
-    <button id="close-btn" onclick="closeMe()">✕</button>
+    <div id="bar-right">
+      <button class="wbtn" onclick="minMe()">&#8212;</button>
+      <button class="wbtn" id="close-btn" onclick="closeMe()">&#10005;</button>
+    </div>
   </div>
 
-  <!-- My performance strip -->
-  <div id="my-perf">
-    <div id="my-champ-wrap">
-      <img id="my-champ-img" src="" alt="" onerror="this.style.opacity='.08'"/>
-      <div id="my-champ-level">—</div>
+  <!-- Result hero strip -->
+  <div id="result-strip">
+    <div id="strip-shimmer"></div>
+    <div id="strip-champ"><img id="sc-img" src="" alt=""></div>
+    <div id="strip-main">
+      <div id="strip-verdict">—</div>
+      <div id="strip-sub">—</div>
     </div>
-    <div id="my-kda-big">
-      <span class="mkda-v" id="mk-k" style="color:var(--green)">0</span>
-      <span class="mkda-sep">/</span>
-      <span class="mkda-v" id="mk-d" style="color:var(--red)">0</span>
-      <span class="mkda-sep">/</span>
-      <span class="mkda-v" id="mk-a" style="color:var(--blue)">0</span>
+    <div id="strip-kda-block">
+      <span class="sk-num" id="sk-k" style="color:var(--green)">0</span>
+      <span class="sk-sep">/</span>
+      <span class="sk-num" id="sk-d" style="color:var(--loss)">0</span>
+      <span class="sk-sep">/</span>
+      <span class="sk-num" id="sk-a" style="color:var(--win)">0</span>
     </div>
-    <div id="my-grade" class="grade-c">B</div>
-    <div class="my-stat-col">
-      <div class="ms-v" id="my-dmg">—</div>
-      <div class="ms-l">DMG DEALT</div>
+    <div id="strip-grade" class="gc">B</div>
+  </div>
+
+  <!-- Stats + items -->
+  <div id="stats-row">
+    <div class="stat-pill">
+      <span class="sp-v" id="sp-dmg" style="color:var(--win)">—</span>
+      <span class="sp-l">DMG DEALT</span>
     </div>
-    <div class="vs-div"></div>
-    <div class="my-stat-col">
-      <div class="ms-v" id="my-cs">—</div>
-      <div class="ms-l">CS</div>
+    <div class="stat-pill">
+      <span class="sp-v" id="sp-cs">—</span>
+      <span class="sp-l">CS</span>
     </div>
-    <div class="vs-div"></div>
-    <div class="my-stat-col">
-      <div class="ms-v" id="my-gold">—</div>
-      <div class="ms-l">GOLD</div>
+    <div class="stat-pill">
+      <span class="sp-v" id="sp-gold" style="color:var(--gold)">—</span>
+      <span class="sp-l">ORO</span>
     </div>
-    <div class="vs-div"></div>
-    <div class="my-stat-col">
-      <div class="ms-v" id="my-vs">—</div>
-      <div class="ms-l">VISION</div>
+    <div class="stat-pill">
+      <span class="sp-v" id="sp-vs">—</span>
+      <span class="sp-l">VISIÓN</span>
     </div>
-    <div id="my-items-row"></div>
+    <div class="stat-pill">
+      <span class="sp-v" id="sp-kp" style="color:var(--purple)">—%</span>
+      <span class="sp-l">PARTICIPACIÓN</span>
+    </div>
+    <div id="items-wrap"></div>
   </div>
 
   <!-- Scoreboard -->
@@ -255,372 +339,560 @@ body{
 
   <!-- Footer -->
   <div id="footer">
-    <div id="footer-brand">
-      <div id="footer-gem"></div>
-      <span id="footer-nm">ATAK AI COACH</span>
+    <div id="ft-brand">
+      <div id="ft-logo"><img src="atak-logo.png" alt="ATAK"></div>
+      <span id="ft-name">ATAK AI COACH</span>
     </div>
-    <button id="open-web-btn" onclick="openProfile()">VIEW FULL STATS ON ATAK.GG →</button>
+    <button id="view-btn" onclick="openProfile()">VER ESTADÍSTICAS COMPLETAS →</button>
   </div>
-</div>
+
+</div><!-- #app -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>
 const $ = id => document.getElementById(id)
-const BACKEND = 'http://localhost:4000'
-let ddPatch = null, lastEogData = null, currentPlatform = null
+let ddPatch = null, eogData = null, currentPlatform = null, gameDur = 0
 
+// ── Patch ───────────────────────────────────────────────────────────
 async function getPatch() {
   if (ddPatch) return ddPatch
-  try { ddPatch = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json())[0] }
-  catch { ddPatch = '15.1.1' }
+  try {
+    const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 4000)
+    ddPatch = (await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json', { signal: ctrl.signal })).json())[0]
+  } catch { ddPatch = '15.14.1' }
   return ddPatch
 }
-function champIcon(id) { return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${id}.png` }
-async function itemIcon(id) { const p = await getPatch(); return id && p ? `https://ddragon.leagueoflegends.com/cdn/${p}/img/item/${id}.png` : '' }
 
-function fmtGold(g) { return g >= 1000 ? (g/1000).toFixed(1)+'k' : String(Math.round(g)) }
-function fmtDmg(d)  { return d >= 1000 ? (d/1000).toFixed(1)+'k' : String(Math.round(d)) }
-function fmtTime(s) { const m=Math.floor(s/60),sec=s%60; return m+':'+(sec<10?'0':'')+sec }
-
-function calcGrade(win, kda, dmgPct, csPm) {
-  // Grade S → D
-  let score = 0
-  if (kda >= 5) score += 35; else if (kda >= 3) score += 25; else if (kda >= 2) score += 15; else if (kda >= 1) score += 5
-  if (dmgPct >= .25) score += 30; else if (dmgPct >= .18) score += 20; else if (dmgPct >= .12) score += 10
-  if (csPm >= 8) score += 20; else if (csPm >= 6) score += 13; else if (csPm >= 4) score += 6
-  if (win) score += 15
-  if (score >= 85) return 'S'
-  if (score >= 68) return 'A'
-  if (score >= 50) return 'B'
-  if (score >= 30) return 'C'
-  return 'D'
+// ── Asset URLs ──────────────────────────────────────────────────────
+function champUrl(id) {
+  return id ? `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${id}.png` : ''
 }
-function gradeClass(g) { return { S:'grade-s', A:'grade-a', B:'grade-b', C:'grade-c', D:'grade-d' }[g] || 'grade-c' }
-
-function multiKillLabel(n) {
-  if (!n || n < 2) return null
-  const labels = [null,'Double','Triple','Quadra','Penta']
-  return labels[Math.min(n, 4)] || 'Penta'
+function itemUrl(id) {
+  return id > 0 ? `https://ddragon.leagueoflegends.com/cdn/${ddPatch||'15.14.1'}/img/item/${id}.png` : null
 }
-function multiKillClass(n) {
-  if (n >= 5) return 'penta'; if (n >= 4) return 'quadra'; if (n >= 3) return 'triple'; return ''
+function itemFallback(id) {
+  return id > 0 ? `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/full-inventory-compressed-images/${id}.jpg` : ''
 }
-
-function st(stats, key, def=0) { return stats?.[key] ?? def }
-
-async function buildItemRow(stats, cls, size=24) {
-  const patch = await getPatch()
-  const frag = document.createDocumentFragment()
-  const keys = ['ITEM0','ITEM1','ITEM2','ITEM3','ITEM4','ITEM5']
-  for (const k of keys) {
-    const id = st(stats, k, 0)
-    const img = document.createElement('img')
-    img.className = 'pi' + (cls ? ' '+cls : '')
-    img.style.width = img.style.height = size+'px'
-    if (id) { img.src = `https://ddragon.leagueoflegends.com/cdn/${patch}/img/item/${id}.png`; img.onerror = () => { img.style.opacity='.08' } }
-    else { img.className = 'pi empty'; img.src = '' }
-    frag.appendChild(img)
+function makeItemImg(id, cls) {
+  const img = document.createElement('img')
+  img.className = cls
+  if (id > 0) {
+    img.src = itemUrl(id)
+    img.onerror = () => { img.src = itemFallback(id); img.onerror = () => { img.style.opacity = '.06'; img.src = '' } }
   }
-  // Trinket
-  const t = st(stats, 'ITEM6', 0)
-  const tri = document.createElement('img')
-  tri.className = 'pi trinket'
-  tri.style.width = tri.style.height = size+'px'
-  if (t) { tri.src = `https://ddragon.leagueoflegends.com/cdn/${patch}/img/item/${t}.png`; tri.onerror = () => { tri.style.opacity='.08' } }
-  else { tri.className = 'pi empty'; tri.src = '' }
-  frag.appendChild(tri)
-  return frag
+  return img
 }
 
-// ── Fill "my performance" strip ───────────────────────────────────────────
-async function fillMyPerf(localPlayer, maxDmg, gameMode) {
-  const s  = localPlayer.stats
-  const k  = st(s,'CHAMPIONS_KILLED') || st(s,'KILLS')
-  const d  = st(s,'DEATHS')
-  const a  = st(s,'ASSISTS')
-  const win = st(s,'WIN') === 1 || st(s,'WIN') === true
-  const dmg = st(s,'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS')
-  const cs  = st(s,'MINIONS_KILLED') + st(s,'NEUTRAL_MINIONS_KILLED')
-  const gold = st(s,'GOLD_EARNED')
-  const vs  = st(s,'VISION_SCORE')
-  const kda = d === 0 ? (k+a) : (k+a)/d
+// ── Stat extractors ─────────────────────────────────────────────────
+function st(s, ...keys) { for (const k of keys) { if (s?.[k] != null) return Number(s[k])||0 } return 0 }
+function kills(s)   { return st(s, 'CHAMPIONS_KILLED', 'championsKilled', 'kills', 'KILLS') }
+function deaths(s)  { return st(s, 'NUM_DEATHS', 'DEATHS', 'numDeaths', 'deaths') }
+function assists(s) { return st(s, 'ASSISTS', 'assists') }
+function cs(s)      { return st(s,'MINIONS_KILLED','minionsKilled') + st(s,'NEUTRAL_MINIONS_KILLED','neutralMinionsKilled') }
+function gold(s)    { return st(s,'GOLD_EARNED','goldEarned') }
+function dmg(s)     { return st(s,'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS','totalDamageDealtToChampions') }
+function vs(s)      { return st(s,'VISION_SCORE','visionScore') }
+function win(s)     { const w = s?.WIN ?? s?.win; return w === 1 || w === true || w === 'Win' }
+function multi(s)   { return st(s,'LARGEST_MULTI_KILL','largestMultiKill') }
+function fb(s)      { const v = s?.FIRST_BLOOD_KILL ?? s?.firstBloodKill; return v === 1 || v === true }
 
-  $('mk-k').textContent = k
-  $('mk-d').textContent = d
-  $('mk-a').textContent = a
-  $('my-dmg').textContent = fmtDmg(dmg)
-  $('my-cs').textContent  = cs
-  $('my-gold').textContent = fmtGold(gold)
-  $('my-vs').textContent  = vs
+// ── Name helpers ────────────────────────────────────────────────────
+// LCU EOG may leave summonerName empty in Riot-ID clients; fall through fullName → gameName#tagLine
+function getPlayerName(p) {
+  if (!p) return null
+  if (p.summonerName) return p.summonerName
+  if (p.fullName)     return p.fullName
+  if (p.gameName)     return p.tagLine ? `${p.gameName}#${p.tagLine}` : p.gameName
+  return null
+}
 
-  // Grade
-  const csPm = cs / 30  // rough 30 min estimate
-  const dmgPct = maxDmg > 0 ? dmg / maxDmg : 0
-  const grade = calcGrade(win, kda, dmgPct, csPm)
-  $('my-grade').textContent = grade
-  $('my-grade').className = gradeClass(grade)
+// ── Item extractor — also checks player-level items array as fallback ──
+function getItems(s, p) {
+  const arr = []
+  for (let i = 0; i < 6; i++) arr.push(Number(s?.['ITEM'+i] ?? s?.['item'+i]) || 0)
+  arr.push(Number(s?.ITEM6 ?? s?.item6) || 0)
+  if (arr.every(id => id === 0) && p) {
+    const inv = p.items || p.inventory
+    if (Array.isArray(inv) && inv.length > 0) {
+      const mapped = inv.map(x => (typeof x === 'number' ? x : x?.itemId ?? x?.id ?? 0))
+      while (mapped.length < 7) mapped.push(0)
+      return mapped.slice(0, 7)
+    }
+  }
+  return arr
+}
+
+// ── Performance tags ────────────────────────────────────────────────
+function performanceTags(s, teamKills, allDmg, dur) {
+  if (!s) return []
+  const k = kills(s), d = deaths(s), a = assists(s)
+  const dmg_ = dmg(s), vs_ = vs(s), g = gold(s)
+  const csPm = dur > 0 ? cs(s)/(dur/60) : 0
+  const kp   = teamKills > 0 ? (k+a)/teamKills*100 : 0
+  const mul  = multi(s)
+  const turr = st(s,'TURRET_KILLS','turretKills','TURRETS_KILLED','TURRETS_DESTROYED')
+  const dmgT = st(s,'TOTAL_DAMAGE_DEALT_TO_TURRETS','totalDamageDealtToTurrets')
+  const heal = st(s,'TOTAL_HEAL','totalHeal','TOTAL_HEALING')
+  const gSpent = st(s,'GOLD_SPENT','goldSpent')
+  // dmgShare: ratio of this player's dmg vs highest-damage player (0-1)
+  const dmgRatio = allDmg > 0 ? dmg_ / allDmg : 0
+  const tags = []
+
+  // Legendary multi-kills take priority
+  if (mul >= 5) return [{ t:'PENTA KILL', c:'te-legendary' }]
+  if (mul >= 4) tags.push({ t:'QUADRA KILL', c:'te-epic' })
+  else if (mul >= 3) tags.push({ t:'TRIPLE KILL', c:'te-epic' })
+
+  // Deaths
+  if (d === 0 && dur > 900) tags.push({ t:'INMORTAL', c:'te-imm' })
+  else if (d >= 14)         tags.push({ t:'SE RINDIÓ', c:'te-bad' })
+
+  // Damage: ≥80% of max player = damage carry; ≤20% in a long game = low damage
+  if (dmgRatio >= 0.80)                       tags.push({ t:'CARRY DE DAÑO', c:'te-good' })
+  else if (dmgRatio <= 0.20 && dur > 1200)    tags.push({ t:'POCO DAÑO', c:'te-bad' })
+
+  // Turrets
+  if (turr >= 3 || dmgT > 10000)          tags.push({ t:'DESTRUCTOR', c:'te-good' })
+
+  // Vision
+  if (vs_ >= 55)                           tags.push({ t:'BUENA VISIÓN', c:'te-sup' })
+  else if (vs_ < 8 && dur > 1200)         tags.push({ t:'CIEGA', c:'te-bad' })
+
+  // CS
+  if (csPm < 2.5 && cs(s) < 80 && dur > 1500) tags.push({ t:'DEJO DE FARMEAR', c:'te-warn' })
+  else if (csPm >= 8)                     tags.push({ t:'GRANJERO ELITE', c:'te-good' })
+
+  // KP
+  if (kp >= 70 && teamKills > 5)          tags.push({ t:'SIEMPRE PRESENTE', c:'te-sup' })
+
+  // Healing
+  if (heal > 20000 && k <= 4)             tags.push({ t:'ASISTENTE PRO', c:'te-sup' })
+
+  // Gold stingy
+  if (gSpent > 0 && g > 9000 && gSpent/g < 0.75) tags.push({ t:'ÁVARO', c:'te-warn' })
+
+  return tags.slice(0, 2)
+}
+
+// ── Format helpers ──────────────────────────────────────────────────
+function fmtG(g) { return g >= 1000 ? (g/1000).toFixed(1)+'k' : String(Math.round(g||0)) }
+function fmtD(d) { return d >= 1000 ? (d/1000).toFixed(1)+'k' : String(Math.round(d||0)) }
+function fmtT(s) { return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}` }
+function kdaRatioStr(k,d,a) {
+  const r = d === 0 ? (k+a) : (k+a)/d
+  return r.toFixed(1) + (d === 0 ? ':1 KDA' : ' KDA')
+}
+function kdaRatioCls(k,d,a) {
+  const r = d === 0 ? 99 : (k+a)/d
+  return r >= 5 ? 'kda-ratio great' : r >= 3 ? 'kda-ratio good' : 'kda-ratio'
+}
+
+// ── Grade ───────────────────────────────────────────────────────────
+function calcGrade(isWin, k, d, a, dmgVal, maxDmg, csVal, dur) {
+  const kda = d === 0 ? k+a : (k+a)/d
+  const csPm = dur > 0 ? csVal/(dur/60) : 0
+  const ds = maxDmg > 0 ? dmgVal/maxDmg : 0
+  let sc = 0
+  if (kda >= 6) sc+=34; else if (kda >= 4) sc+=26; else if (kda >= 2.5) sc+=17; else if (kda >= 1.5) sc+=8
+  if (ds >= .28) sc+=28; else if (ds >= .20) sc+=20; else if (ds >= .13) sc+=12; else if (ds >= .07) sc+=5
+  if (csPm >= 8) sc+=22; else if (csPm >= 6.5) sc+=15; else if (csPm >= 5) sc+=9; else if (csPm >= 3) sc+=4
+  if (isWin) sc+=16
+  return sc >= 88 ? 'S' : sc >= 70 ? 'A' : sc >= 52 ? 'B' : sc >= 32 ? 'C' : 'D'
+}
+const GRADE_CLS = { S:'gs', A:'ga', B:'gb', C:'gc', D:'gd' }
+
+// ── Victory particles ────────────────────────────────────────────────
+function spawnParticles() {
+  const colors = ['#0bc4e3','#4ade80','#c8aa6e','#a78bfa','#fff']
+  for (let i = 0; i < 28; i++) {
+    const p = document.createElement('div'); p.className = 'particle'
+    const size = 3 + Math.random()*5
+    const color = colors[Math.floor(Math.random()*colors.length)]
+    Object.assign(p.style, {
+      left: (10+Math.random()*80)+'%', top: (20+Math.random()*40)+'%',
+      width: size+'px', height: size+'px', background: color,
+      animationDelay: (Math.random()*0.8)+'s',
+      animationDuration: (1+Math.random()*0.8)+'s',
+    })
+    document.body.appendChild(p)
+    setTimeout(() => p.remove(), 2500)
+  }
+}
+
+// ── Hero strip ──────────────────────────────────────────────────────
+async function fillHero(lp, maxDmg, teamKills, isRemake) {
+  const s = lp.stats
+  const k = kills(s), d = deaths(s), a = assists(s)
+  const isWin = win(s)
+
+  // Bar verdict
+  const barCls = isRemake ? 'bar-defeat' : (isWin ? 'bar-victory' : 'bar-defeat')
+  $('app').className = barCls
+  $('bar-verdict').textContent = isRemake ? 'REMAKE' : (isWin ? 'VICTORIA' : 'DERROTA')
+
+  // Strip
+  $('strip-verdict').textContent = isRemake ? 'REMAKE' : (isWin ? 'VICTORIA' : 'DERROTA')
+  if (isRemake) {
+    $('strip-verdict').style.color = 'rgba(255,255,255,.4)'
+    $('strip-grade').textContent = '—'
+    $('strip-grade').className = 'gc'
+  }
+  $('strip-sub').textContent = modeLabel(eogData.gameMode) + (isRemake ? ' · PARTIDA REMAKE' : ' · ' + fmtT(gameDur))
+
+  // K/D/A
+  $('sk-k').textContent = k; $('sk-d').textContent = d; $('sk-a').textContent = a
+  $('bar-kda').textContent = `${k}/${d}/${a}`
 
   // Champion image
-  $('my-champ-img').src = champIcon(localPlayer.championId)
-  $('my-champ-level').textContent = localPlayer.level || '—'
+  const cUrl = champUrl(lp.championId)
+  $('sc-img').src = cUrl; $('sc-img').onerror = () => { $('sc-img').style.opacity='.1' }
+  $('bar-champ-img').src = cUrl; $('bar-champ-img').style.display = 'block'
+
+  // Grade
+  if (!isRemake) {
+    const grade = calcGrade(isWin, k, d, a, dmg(s), maxDmg, cs(s), gameDur)
+    const gEl = $('strip-grade')
+    gEl.textContent = grade; gEl.className = GRADE_CLS[grade] || 'gc'
+  }
+
+  // Stats pills
+  const kp_val = teamKills > 0 ? Math.round((k+a)/teamKills*100) : 0
+  $('sp-dmg').textContent = fmtD(dmg(s)); $('sp-dmg').style.color = isWin ? 'var(--win)' : 'var(--loss)'
+  $('sp-cs').textContent  = cs(s)
+  $('sp-gold').textContent = fmtG(gold(s))
+  $('sp-vs').textContent  = vs(s)
+  $('sp-kp').textContent  = kp_val + '%'
 
   // Items
-  const row = $('my-items-row')
-  row.appendChild(await buildItemRow(s, null, 32))
-
-  if (window.gsap) gsap.from('#my-perf > *', { opacity:0, y:-6, duration:.4, stagger:.06, ease:'power2.out' })
+  const iw = $('items-wrap'); iw.innerHTML = ''
+  const its = getItems(s, lp)
+  for (let i = 0; i < 7; i++) {
+    const id = its[i]||0
+    const cls = 'iico' + (id===0?' empty':'') + (i===6?' trinket':'')
+    iw.appendChild(makeItemImg(id, cls))
+  }
 }
 
-// ── Scoreboard ────────────────────────────────────────────────────────────
-async function buildScoreboard(data) {
+// ── Scoreboard ──────────────────────────────────────────────────────
+function buildSR(data, isRemake) {
+  if (isRemake) {
+    const sb = $('scoreboard'); sb.innerHTML = ''
+    const notice = document.createElement('div')
+    notice.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:rgba(255,255,255,.25)'
+    notice.innerHTML = '<div style="font-size:36px;opacity:.3">🔄</div><div style="font-size:13px;font-weight:700;letter-spacing:.15em">PARTIDA CANCELADA (REMAKE)</div><div style="font-size:9px;letter-spacing:.1em;margin-top:2px">La partida terminó antes del minuto 3</div>'
+    sb.appendChild(notice)
+    return
+  }
   const sb = $('scoreboard'); sb.innerHTML = ''
-  const isArena = (data.gameMode || '').toUpperCase() === 'CHERRY'
-  const localTeamId = data.localPlayer?.teamId
-  const localSummoner = data.localPlayer?.summonerName
+  const localSn = getPlayerName(data.localPlayer)
+  let allDmg = 1
+  for (const t of data.teams||[]) for (const p of t.players||[]) { const d2=dmg(p.stats); if(d2>allDmg) allDmg=d2 }
 
-  // Compute max damage across all players for bar scaling
-  let maxDmg = 1
-  for (const team of (data.teams || [])) {
-    for (const p of (team.players || [])) {
-      const d = st(p.stats,'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS')
-      if (d > maxDmg) maxDmg = d
+  // MVP: best (K+A)/deaths ratio + damage share — only among players with a valid name
+  let mvpSn = null, mvpScore = -1
+  for (const t of data.teams||[]) {
+    for (const p of t.players||[]) {
+      const pn = getPlayerName(p); if (!pn) continue
+      const s=p.stats, d2=deaths(s)||1, sc=(kills(s)+assists(s))/d2 + dmg(s)/allDmg*0.3
+      if (sc > mvpScore) { mvpScore=sc; mvpSn=pn }
     }
   }
-  // Also include local player
-  const ldmg = st(data.localPlayer?.stats, 'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS')
-  if (ldmg > maxDmg) maxDmg = ldmg
 
-  await fillMyPerf(data.localPlayer, maxDmg, data.gameMode)
+  for (const team of data.teams||[]) {
+    const isBlue = team.teamId === 100 || team.players?.[0]?.teamId === 100
+    const isWin2  = team.isWinningTeam
+    const side = isBlue ? 'ally' : 'enemy'
+    const teamKills = team.players?.reduce((s,p) => s+kills(p.stats), 0) || 1
+    const teamK = team.players?.reduce((s,p) => s+kills(p.stats), 0) || 0
+    const teamD = team.players?.reduce((s,p) => s+deaths(p.stats), 0) || 0
+    const teamA = team.players?.reduce((s,p) => s+assists(p.stats), 0) || 0
+    const teamGold = team.players?.reduce((s,p) => s+gold(p.stats), 0) || 0
 
-  if (isArena) {
-    await buildArenaScoreboard(sb, data, maxDmg, localSummoner)
-  } else {
-    await buildSRScoreboard(sb, data, maxDmg, localTeamId, localSummoner)
-  }
-
-  // GSAP entrance on rows
-  if (window.gsap) gsap.from('.prow', { opacity:0, x:-8, duration:.35, stagger:.025, ease:'power2.out', delay:.2 })
-}
-
-async function buildSRScoreboard(sb, data, maxDmg, localTeamId, localSummoner) {
-  const myTeamWon = (data.teams || []).find(t => t.players?.some(p => p.summonerName === localSummoner))?.isWinningTeam
-  for (const team of (data.teams || [])) {
-    const isBlue = team.teamId === 100
-    const isWin = team.isWinningTeam
     const block = document.createElement('div'); block.className = 'team-block'
-    // Header
     const hdr = document.createElement('div')
-    hdr.className = `team-hdr ${isBlue ? 'th-blue' : 'th-red'} ${isWin ? 'victory-hdr' : 'defeat-hdr'}`
+    hdr.className = `team-hdr ${isBlue?'th-blu':'th-red'}`
     hdr.innerHTML = `
-      <div class="th-dot"></div>
-      <span class="th-name">${isBlue ? 'BLUE TEAM' : 'RED TEAM'}</span>
-      <span class="th-win-badge ${isWin?'win':'loss'}">${isWin?'VICTORY':'DEFEAT'}</span>
-      <div class="th-col-hdrs">
-        <div class="th-ch">KDA</div>
-        <div class="th-ch">CS</div>
-        <div class="th-ch">GOLD</div>
-        <div style="width:220px;text-align:center">ITEMS</div>
-        <div style="flex:1;text-align:center;padding-left:10px">DAMAGE</div>
+      <div class="th-identity">
+        <div class="th-dot"></div>
+        <span class="th-name">${isBlue?'EQUIPO AZUL':'EQUIPO ROJO'}</span>
+        <span class="th-badge ${isWin2?'w':'l'}">${isWin2?'VICTORIA':'DERROTA'}</span>
       </div>
+      <div class="th-col-lbl" style="text-align:left;padding-left:4px">RENDIMIENTO · <span class="th-totalkda" style="font-size:9px;color:rgba(255,255,255,.35)">${teamK}/${teamD}/${teamA}</span></div>
+      <div class="th-col-lbl">ITEMS</div>
+      <div class="th-col-lbl">KDA</div>
+      <div class="th-col-lbl">CS</div>
+      <div class="th-col-lbl">KP%</div>
+      <div class="th-col-lbl dmg th-gold">${fmtG(teamGold)} ORO</div>
     `
     block.appendChild(hdr)
-    for (const p of (team.players || [])) {
-      const row = await buildPlayerRow(p, maxDmg, localSummoner, isBlue ? 'ally' : 'enemy')
-      block.appendChild(row)
-    }
+
+    ;(team.players||[]).forEach((p, idx) => {
+      block.appendChild(buildRow(p, allDmg, localSn, side, teamKills, mvpSn, idx))
+    })
     sb.appendChild(block)
   }
 }
 
-async function buildArenaScoreboard(sb, data, maxDmg, localSummoner) {
-  // Arena: all players, sorted by placement or kills
-  const allPlayers = []
-  for (const team of (data.teams || [])) allPlayers.push(...(team.players || []))
-  // Sort by placement if available, else by kills desc
-  allPlayers.sort((a,b) => {
-    const pa = st(a.stats,'SUBTEAM_PLACEMENT',99), pb = st(b.stats,'SUBTEAM_PLACEMENT',99)
-    if (pa !== pb) return pa - pb
-    return st(b.stats,'CHAMPIONS_KILLED') - st(a.stats,'CHAMPIONS_KILLED')
-  })
-  const block = document.createElement('div'); block.className = 'team-block'
-  const hdr = document.createElement('div')
-  hdr.className = 'team-hdr victory-hdr'
-  hdr.innerHTML = `
-    <span class="th-name" style="color:var(--gold)">ARENA — ALL PLAYERS</span>
-    <div class="th-col-hdrs">
-      <div class="th-ch">KDA</div>
-      <div style="width:220px;text-align:center">ITEMS</div>
-      <div style="flex:1;text-align:center;padding-left:10px">DAMAGE</div>
-    </div>
-  `
-  block.appendChild(hdr)
-  for (const p of allPlayers) {
-    const row = await buildPlayerRow(p, maxDmg, localSummoner, 'ally', true)
-    block.appendChild(row)
-  }
-  sb.appendChild(block)
-}
-
-async function buildPlayerRow(p, maxDmg, localSummoner, side, isArena=false) {
-  const s    = p.stats
-  const k    = st(s,'CHAMPIONS_KILLED') || st(s,'KILLS')
-  const d    = st(s,'DEATHS')
-  const a    = st(s,'ASSISTS')
-  const cs   = st(s,'MINIONS_KILLED') + st(s,'NEUTRAL_MINIONS_KILLED')
-  const gold = st(s,'GOLD_EARNED')
-  const dmg  = st(s,'TOTAL_DAMAGE_DEALT_TO_CHAMPIONS')
-  const vs   = st(s,'VISION_SCORE')
-  const multi = st(s,'LARGEST_MULTI_KILL')
-  const place = st(s,'SUBTEAM_PLACEMENT',0)
-  const isMe = p.summonerName === localSummoner
+function buildRow(p, maxDmg, localSn, side, teamKills, mvpSn, idx) {
+  const s = p.stats
+  const k = kills(s), d = deaths(s), a = assists(s)
+  const dmg_ = dmg(s), cs_ = cs(s), vs_ = vs(s), mul = multi(s), fb_ = fb(s)
+  const playerName = getPlayerName(p)
+  const isMe  = !!(playerName && playerName === localSn)
+  const isMvp = !!(playerName && playerName === mvpSn)
+  const kp = teamKills > 0 ? Math.round((k+a)/teamKills*100) : 0
+  const pct = maxDmg > 0 ? Math.min(100,(dmg_/maxDmg)*100) : 0
+  const csPm = gameDur > 0 ? (cs_/(gameDur/60)).toFixed(1) : '—'
 
   const row = document.createElement('div')
-  row.className = `prow${isMe?' is-me':''}`
+  row.className = 'prow' + (isMe?' me':'')
+  row.style.animationDelay = (idx * 0.045 + 0.1) + 's'
 
-  // Arena placement badge
-  if (isArena && place > 0) {
-    const plEl = document.createElement('div')
-    plEl.className = 'arena-place ' + (place===1?'p1':place===2?'p2':place===3?'p3':'pX')
-    plEl.textContent = place
-    row.appendChild(plEl)
-  }
-
-  // Champion icon
-  const img = document.createElement('img')
-  img.className = 'pr-champ'; img.src = champIcon(p.championId); img.onerror = () => { img.style.opacity = '.08' }
-  row.appendChild(img)
-
-  // Name + multi kill
+  // Col 1 - Identity (champion + name)
+  const colId = document.createElement('div'); colId.className = 'col-identity'
+  const cw = document.createElement('div'); cw.className = 'champ-wrap'
+  const ci = document.createElement('img'); ci.className = 'champ-img'
+  ci.src = champUrl(p.championId); ci.onerror = () => { ci.style.opacity='.1' }
+  cw.appendChild(ci)
+  const lv = document.createElement('div'); lv.className = 'champ-lv'
+  lv.textContent = p.level||'?'; cw.appendChild(lv)
+  colId.appendChild(cw)
   const nameWrap = document.createElement('div')
-  nameWrap.style.display = 'flex'; nameWrap.style.alignItems = 'center'; nameWrap.style.flex = '1'; nameWrap.style.minWidth = '0'
-  const nameEl = document.createElement('span')
-  nameEl.className = `pr-name${isMe?' me':''}`;
-  nameEl.textContent = p.summonerName || '—'; nameWrap.appendChild(nameEl)
-  if (multi >= 2) {
-    const ml = document.createElement('span')
-    ml.className = `pr-multi ${multiKillClass(multi)}`
-    ml.textContent = multiKillLabel(multi); nameWrap.appendChild(ml)
+  const nm = document.createElement('div'); nm.className = 'player-name' + (isMe?' me':'')
+  const displayName = (playerName || '?').replace(/#.+$/, '').slice(0, 16)
+  nm.textContent = displayName
+  nameWrap.appendChild(nm)
+  const tags = document.createElement('div'); tags.className = 'player-tags'
+  if (isMvp) { const t=document.createElement('span'); t.className='ptag mvp'; t.textContent='MVP'; tags.appendChild(t) }
+  if (mul>=5)      { const t=document.createElement('span'); t.className='ptag penta'; t.textContent='PENTA'; tags.appendChild(t) }
+  else if (mul>=4) { const t=document.createElement('span'); t.className='ptag quadra'; t.textContent='QUADRA'; tags.appendChild(t) }
+  else if (mul>=3) { const t=document.createElement('span'); t.className='ptag triple'; t.textContent='TRIPLE'; tags.appendChild(t) }
+  else if (mul>=2) { const t=document.createElement('span'); t.className='ptag double'; t.textContent='DOBLE'; tags.appendChild(t) }
+  if (fb_) { const t=document.createElement('span'); t.className='ptag fb'; t.textContent='FB'; tags.appendChild(t) }
+  nameWrap.appendChild(tags); colId.appendChild(nameWrap)
+  row.appendChild(colId)
+
+  // Col 2 - Performance tags
+  const colPerf = document.createElement('div'); colPerf.className = 'col-perf'
+  const perfTags = performanceTags(s, teamKills, maxDmg, gameDur)
+  for (const pt of perfTags) {
+    const el = document.createElement('span'); el.className = `te ${pt.c}`; el.textContent = pt.t
+    colPerf.appendChild(el)
   }
-  row.appendChild(nameWrap)
+  row.appendChild(colPerf)
 
-  // KDA
-  const kdaEl = document.createElement('div'); kdaEl.className = 'pr-kda'
-  kdaEl.innerHTML = `<span class="dk">${k}</span>/<span class="dd">${d}</span>/<span class="da">${a}</span>`
-  row.appendChild(kdaEl)
-
-  // CS
-  if (!isArena) {
-    const csEl = document.createElement('div'); csEl.className = 'pr-cs'; csEl.textContent = cs; row.appendChild(csEl)
-    const goldEl = document.createElement('div'); goldEl.className = 'pr-gold'; goldEl.textContent = fmtGold(gold); row.appendChild(goldEl)
+  // Col 3 - Items
+  const colItems = document.createElement('div'); colItems.className = 'col-items'
+  const its = getItems(s, p)
+  for (let i = 0; i < 6; i++) {
+    const id = its[i]||0
+    const cls = 'pi' + (id===0?' empty':'')
+    colItems.appendChild(makeItemImg(id, cls))
   }
+  // Separator + trinket
+  const sep = document.createElement('div'); sep.className = 'pi-spacer'; sep.textContent = '·'
+  colItems.appendChild(sep)
+  const tId = its[6]||0
+  const trinket = makeItemImg(tId, 'pi trinket' + (tId===0?' empty':''))
+  colItems.appendChild(trinket)
+  row.appendChild(colItems)
 
-  // Items
-  const itemsWrap = document.createElement('div'); itemsWrap.className = 'pr-items'
-  itemsWrap.appendChild(await buildItemRow(s, isArena?'':'', 24))
-  row.appendChild(itemsWrap)
+  // Col 4 - KDA
+  const colKda = document.createElement('div'); colKda.className = 'col-kda'
+  const kdaNums = document.createElement('div'); kdaNums.className = 'kda-nums'
+  kdaNums.innerHTML = `<span class="kn-k">${k}</span><span class="kn-s">/</span><span class="kn-d">${d}</span><span class="kn-s">/</span><span class="kn-a">${a}</span>`
+  const kdaRat = document.createElement('div'); kdaRat.className = kdaRatioCls(k,d,a)
+  kdaRat.textContent = kdaRatioStr(k,d,a)
+  colKda.appendChild(kdaNums); colKda.appendChild(kdaRat)
+  row.appendChild(colKda)
 
-  // Damage bar
-  const dmgWrap = document.createElement('div'); dmgWrap.className = 'pr-dmg'
-  const bar = document.createElement('div'); bar.className = 'dmg-bar'
-  const fill = document.createElement('div'); fill.className = `dmg-fill ${side}`
-  const pct = maxDmg > 0 ? Math.min(100, (dmg / maxDmg) * 100) : 0
-  fill.style.width = '0%'
-  bar.appendChild(fill); dmgWrap.appendChild(bar)
-  const dtxt = document.createElement('span'); dtxt.className = 'dmg-txt'; dtxt.textContent = fmtDmg(dmg)
-  dmgWrap.appendChild(dtxt)
-  row.appendChild(dmgWrap)
+  // Col 5 - CS
+  const colCs = document.createElement('div'); colCs.className = 'col-cs'
+  const csN = document.createElement('div'); csN.className = 'cs-num'; csN.textContent = cs_
+  const csM = document.createElement('div'); csM.className = 'cs-min'; csM.textContent = csPm+'/m'
+  colCs.appendChild(csN); colCs.appendChild(csM)
+  row.appendChild(colCs)
 
-  // Animate damage bars after append
-  setTimeout(() => { if (window.gsap) gsap.to(fill, { width: pct+'%', duration:.9, ease:'power2.out', delay:.3 })
-    else fill.style.width = pct+'%' }, 50)
+  // Col 6 - KP%
+  const colKp = document.createElement('div'); colKp.className = 'col-kp'
+  const kpN = document.createElement('div'); kpN.className = 'kp-num'
+  kpN.textContent = kp+'%'
+  kpN.style.color = kp >= 60 ? 'var(--green)' : kp >= 40 ? 'var(--win)' : 'rgba(255,255,255,.5)'
+  const kpL = document.createElement('div'); kpL.className = 'kp-lbl'; kpL.textContent = 'KP'
+  colKp.appendChild(kpN); colKp.appendChild(kpL)
+  row.appendChild(colKp)
 
-  // Vision (vision score)
-  const vsEl = document.createElement('div'); vsEl.className = 'pr-vs'; vsEl.textContent = vs; row.appendChild(vsEl)
+  // Col 7 - DMG
+  const colDmg = document.createElement('div'); colDmg.className = 'col-dmg'
+  const dmgTop = document.createElement('div'); dmgTop.className = 'dmg-top'
+  const dmgNum = document.createElement('span'); dmgNum.className = 'dmg-num'
+  dmgNum.textContent = fmtD(dmg_)
+  const vsSpan = document.createElement('span'); vsSpan.style.cssText = 'font-size:8px;color:rgba(255,255,255,.25);white-space:nowrap'
+  vsSpan.textContent = vs_+' VS'
+  dmgTop.appendChild(dmgNum); dmgTop.appendChild(vsSpan)
+  const barWrap = document.createElement('div'); barWrap.className = 'dmg-bar-wrap'
+  const fill = document.createElement('div'); fill.className = 'dmg-bar-fill fill-'+side
+  barWrap.appendChild(fill); colDmg.appendChild(dmgTop); colDmg.appendChild(barWrap)
+  row.appendChild(colDmg)
+
+  // Animate bar after render
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      if (window.gsap) gsap.to(fill, { width: pct+'%', duration:.9, ease:'power2.out', delay: idx*0.05+0.35 })
+      else fill.style.width = pct+'%'
+    }, 20)
+  })
 
   return row
 }
 
-// ── Main render ───────────────────────────────────────────────────────────
-async function renderEog(data) {
-  lastEogData = data
-  await getPatch()
-
-  // Banner
-  const isArena = (data.gameMode || '').toUpperCase() === 'CHERRY'
-  const myWin   = data.localPlayer?.stats?.WIN === 1 || data.localPlayer?.stats?.WIN === true
-  const banner  = $('result-banner')
-  banner.className = myWin ? 'victory' : 'defeat'
-  $('result-txt').textContent = myWin ? 'VICTORY' : 'DEFEAT'
-  $('result-mode').textContent = isArena ? 'ARENA' : modeLabel(data.gameMode)
-  $('result-time').textContent = fmtTime(data.gameLength || 0)
-
-  // Show main, hide loading
-  $('loading-state').style.display = 'none'
-  $('main').style.display = 'flex'
-  $('main').style.flexDirection = 'column'
-  $('main').style.minHeight = '600px'
-
-  await buildScoreboard(data)
-
-  if (window.gsap) {
-    gsap.from('#result-banner', { opacity:0, y:-20, duration:.6, ease:'power3.out' })
+function buildArena(data) {
+  const sb = $('scoreboard'); sb.innerHTML = ''
+  const localSn = getPlayerName(data.localPlayer)
+  let maxDmg = 1
+  const all = []
+  for (const t of data.teams||[]) {
+    for (const p of t.players||[]) {
+      all.push(p); const d2=dmg(p.stats); if(d2>maxDmg) maxDmg=d2
+    }
   }
+  all.sort((a2,b2) => {
+    const pa=st(a2.stats,'SUBTEAM_PLACEMENT',99), pb=st(b2.stats,'SUBTEAM_PLACEMENT',99)
+    return pa!==pb ? pa-pb : dmg(b2.stats)-dmg(a2.stats)
+  })
+
+  let mvpSn=null,mvpScore=-1
+  for(const p of all){const pn=getPlayerName(p);if(!pn)continue;const s=p.stats,d2=deaths(s)||1,sc=(kills(s)+assists(s))/d2+dmg(s)/maxDmg*.3;if(sc>mvpScore){mvpScore=sc;mvpSn=pn}}
+
+  const block = document.createElement('div'); block.className = 'team-block'
+  const hdr = document.createElement('div'); hdr.className = 'team-hdr th-blu'
+  hdr.innerHTML = `
+    <div class="th-identity" style="grid-column:1/3">
+      <div class="th-dot" style="background:var(--gold)"></div>
+      <span class="th-name" style="color:rgba(200,170,110,.7)">ARENA — CLASIFICACIÓN FINAL</span>
+    </div>
+    <div class="th-col-lbl">ITEMS</div>
+    <div class="th-col-lbl">KDA</div>
+    <div class="th-col-lbl">KP%</div>
+    <div class="th-col-lbl dmg">DMG</div>
+  `
+  block.appendChild(hdr)
+  all.forEach((p,idx) => {
+    const place = st(p.stats,'SUBTEAM_PLACEMENT',0)
+    const row = buildRow(p, maxDmg, localSn, 'arena', 1, mvpSn, idx)
+    // Prepend placement badge
+    const bd = document.createElement('div')
+    bd.className = 'arena-badge ' + (place===1?'ap1':place===2?'ap2':place===3?'ap3':'apX')
+    bd.textContent = place||'?'
+    row.prepend(bd)
+    block.appendChild(row)
+  })
+  sb.appendChild(block)
+}
+
+// ── Main render ──────────────────────────────────────────────────────
+async function render(data) {
+  eogData = data
+  await getPatch()
+  gameDur = data.gameLength || 0
+
+  const isArena  = (data.gameMode||'').toUpperCase() === 'CHERRY'
+  const isRemake = gameDur > 0 && gameDur < 180
+  const isWin    = win(data.localPlayer?.stats)
+
+  // Compute max dmg and team kills for local player's team
+  let maxDmg = 1
+  let localTeamKills = 1
+  for (const t of data.teams||[]) {
+    for (const p of t.players||[]) { const d2=dmg(p.stats); if(d2>maxDmg) maxDmg=d2 }
+    if (t.players?.some(p => getPlayerName(p) === getPlayerName(data.localPlayer))) {
+      localTeamKills = t.players.reduce((s,p) => s+kills(p.stats), 0) || 1
+    }
+  }
+
+  // Header text
+  $('bar-mode').textContent = modeLabel(data.gameMode)
+  $('bar-time').textContent = fmtT(gameDur)
+  $('bar-champ-name').textContent = data.localPlayer?.championName || ''
+
+  // Fill hero section
+  await fillHero(data.localPlayer, maxDmg, localTeamKills, isRemake)
+
+  // Build scoreboard
+  if (isArena) buildArena(data)
+  else buildSR(data, isRemake)
+
+  // Show app
+  $('loader').style.display = 'none'
+  const app = $('app'); app.style.display = 'flex'
+
+  // Animate in
+  if (window.gsap) {
+    gsap.from('#bar',           { opacity:0, y:-12, duration:.4, ease:'power3.out' })
+    gsap.from('#result-strip',  { opacity:0, x:-20, duration:.5, ease:'power2.out', delay:.05 })
+    gsap.from('#stats-row',     { opacity:0, y:6,   duration:.35, ease:'power2.out', delay:.18 })
+    gsap.from('#footer',        { opacity:0,         duration:.3, ease:'power2.out', delay:.55 })
+    gsap.from('#strip-grade',   { scale:.4, opacity:0, duration:.5, ease:'back.out(2)', delay:.22 })
+  }
+  if (isWin) setTimeout(spawnParticles, 350)
 }
 
 function modeLabel(m) {
-  const map = { CLASSIC:'SUMMONER\'S RIFT', ARAM:'ARAM', CHERRY:'ARENA', URF:'URF', TUTORIAL:'TUTORIAL' }
-  return map[(m||'').toUpperCase()] || (m || 'CUSTOM')
+  return { CLASSIC:"SUMMONER'S RIFT", ARAM:'ARAM', CHERRY:'ARENA', URF:'URF', ONEFORALL:'ONE FOR ALL' }[(m||'').toUpperCase()] || (m||'—')
 }
-
 function openProfile() {
-  const p = currentPlatform || 'la1'
-  const name = lastEogData?.localPlayer?.summonerName
-  if (!name) return
-  const url = `http://192.168.1.79:8080/stats/${p}/${encodeURIComponent(name)}`
+  const sn = getPlayerName(eogData?.localPlayer) || ''; if(!sn) return
+  const url = `http://localhost:8080/stats/${currentPlatform||'la1'}/${encodeURIComponent(sn)}`
   if (typeof overwolf !== 'undefined') overwolf.utils.openUrlInDefaultBrowser(url)
+  else window.open(url, '_blank')
 }
 function closeMe() {
-  if (typeof overwolf !== 'undefined') overwolf.windows.getCurrentWindow(r => { if (r.status==='success') overwolf.windows.close(r.window.id) })
+  if (typeof overwolf !== 'undefined') overwolf.windows.getCurrentWindow(r => overwolf.windows.close(r.window.id))
+}
+function minMe() {
+  if (typeof overwolf !== 'undefined') overwolf.windows.getCurrentWindow(r => overwolf.windows.minimize(r.window.id))
 }
 
-// ── Overwolf message handler ──────────────────────────────────────────────
+// ── Overwolf ─────────────────────────────────────────────────────────
 if (typeof overwolf !== 'undefined') {
   overwolf.windows.onMessageReceived.addListener(msg => {
     const c = msg?.content; if (!c) return
-    if (c.type === 'eog-data' && c.data) renderEog(c.data)
+    if (c.type === 'eog-data' && c.data) render(c.data)
     if (c.type === 'eog-platform') currentPlatform = c.platform
   })
 }
 
-// ── Dev mock ──────────────────────────────────────────────────────────────
+// ── Dev mock ──────────────────────────────────────────────────────────
 if (typeof overwolf === 'undefined') {
-  const mk = (sn,cid,k,d,a,cs,gold,dmg,win,items) => ({
-    botPlayer:false,championId:cid,level:13,summonerName:sn,teamId:win?200:100,
-    stats:{WIN:win?1:0,CHAMPIONS_KILLED:k,DEATHS:d,ASSISTS:a,MINIONS_KILLED:cs,NEUTRAL_MINIONS_KILLED:0,
-      GOLD_EARNED:gold,TOTAL_DAMAGE_DEALT_TO_CHAMPIONS:dmg,VISION_SCORE:22,
-      LARGEST_MULTI_KILL:2,ITEM0:items[0]||0,ITEM1:items[1]||0,ITEM2:items[2]||0,ITEM3:items[3]||0,ITEM4:items[4]||0,ITEM5:items[5]||0,ITEM6:3364}
+  const mk = (sn,cid,lv,k,d,a,cs_,g,dmg_,w,its,fb_=false,mul=0) => ({
+    championId:cid, level:lv, summonerName:sn, teamId:w?100:200,
+    stats:{ WIN:w?1:0, CHAMPIONS_KILLED:k, NUM_DEATHS:d, ASSISTS:a,
+      MINIONS_KILLED:cs_, NEUTRAL_MINIONS_KILLED:0, GOLD_EARNED:g,
+      TOTAL_DAMAGE_DEALT_TO_CHAMPIONS:dmg_, VISION_SCORE:Math.floor(Math.random()*30+8),
+      LARGEST_MULTI_KILL:mul, FIRST_BLOOD_KILL:fb_?1:0,
+      ITEM0:its[0]||0, ITEM1:its[1]||0, ITEM2:its[2]||0,
+      ITEM3:its[3]||0, ITEM4:its[4]||0, ITEM5:its[5]||0, ITEM6:3364 }
   })
-  const mockData = {
-    gameId:123456,gameLength:1842,gameMode:'CLASSIC',ranked:true,
-    localPlayer:mk('KisterKata',145,8,3,5,172,14200,32000,false,[3152,3006,3031,3139,3091,3033]),
+  setTimeout(() => render({
+    gameId:999, gameLength:1842, gameMode:'CLASSIC', ranked:true,
+    localPlayer: mk('Kister',145,14,10,2,7,180,15200,38000,true,[3031,3006,3094,3139,3036,3033],false,3),
     teams:[
-      {teamId:100,isWinningTeam:true,isPlayerTeam:false,players:[
-        mk('TopLaner',84,4,2,8,201,13800,18000,true,[3071,3111,3083,3033,3053,3742]),
-        mk('Jungler',64,6,1,6,47,12400,24000,true,[3153,3006,3142,3036,3138,3156]),
-        mk('Midlaner',55,10,2,4,185,16200,35000,true,[3165,3020,3135,3157,3089,3174]),
-        mk('ADC',222,12,1,3,210,17800,41000,true,[3031,3006,3094,3139,3036,3033]),
-        mk('Support',12,1,5,14,28,7200,8000,true,[3109,3190,3050,3107,3504,2065]),
+      { teamId:100, isWinningTeam:true, players:[
+        mk('TopLaner',84,15,4,3,8,201,13800,18000,true,[3071,3111,3083,3033,3053,3742]),
+        mk('Jungler',64,14,6,2,5,47,12400,24000,true,[3153,3006,3142,3036,3138,3156],true,2),
+        mk('Kister',145,14,10,2,7,180,15200,38000,true,[3031,3006,3094,3139,3036,3033],false,3),
+        mk('ADC',222,15,12,1,3,210,17800,41000,true,[3031,3006,3094,3139,3036,3033],false,5),
+        mk('Support',12,12,1,4,12,28,7200,8000,true,[3109,3190,3050,3107,3504,2065]),
       ]},
-      {teamId:200,isWinningTeam:false,isPlayerTeam:true,players:[
-        mk('KisterKata',145,8,3,5,172,14200,32000,false,[3152,3006,3031,3139,3091,3033]),
-        mk('Enemy1',24,3,6,4,180,11200,19000,false,[3090,3020,3135,3157,3089,3174]),
-        mk('Enemy2',91,5,4,7,55,10200,22000,false,[3068,3111,3742,3083,3053,3033]),
-        mk('Enemy3',202,7,3,2,195,13600,28000,false,[3031,3006,3094,3139,3036,3033]),
-        mk('Enemy4',412,0,7,10,22,6800,7000,false,[3109,3190,3050,3107,3504,2065]),
+      { teamId:200, isWinningTeam:false, players:[
+        mk('Enemy1',103,15,5,7,4,155,11200,22000,false,[3165,3020,3135,3157,3089,3174]),
+        mk('Enemy2',24,13,3,6,4,180,11200,19000,false,[3090,3020,3135,3157,3089,3174]),
+        mk('Enemy3',91,14,4,5,7,55,10200,15000,false,[3068,3111,3742,3083,3053,3033]),
+        mk('Enemy4',202,13,6,4,2,195,13600,28000,false,[3031,3006,3094,3139,3036,3033]),
+        mk('Enemy5',412,11,0,6,10,22,6800,7000,false,[3109,3190,3050,3107,3504,2065]),
       ]}
     ]
-  }
-  setTimeout(() => renderEog(mockData), 300)
+  }), 400)
 }
 </script>
 </body>

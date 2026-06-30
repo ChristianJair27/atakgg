@@ -159,6 +159,18 @@ body{
 .tc-wr{font-size:8px;font-weight:700;color:rgba(255,255,255,.4)}
 .act-loading{font-size:8px;color:rgba(255,255,255,.18);font-style:italic;animation:shimm 1.4s ease-in-out infinite}
 
+/* ── Meme card ── */
+#meme-card{display:none}
+#meme-card .inner{padding:10px 14px}
+.meme-row{display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.meme-row:last-child{border-bottom:none;padding-bottom:0}
+.meme-num{font-size:22px;font-weight:900;color:var(--red);min-width:54px;text-align:right;flex-shrink:0;line-height:1.1}
+.meme-num.gold{color:var(--gold)}.meme-num.teal{color:var(--teal)}.meme-num.green{color:var(--green)}
+.meme-body{flex:1;min-width:0}
+.meme-txt{font-size:10px;font-weight:600;color:rgba(255,255,255,.75);line-height:1.45}
+.meme-sub{font-size:8.5px;color:rgba(255,255,255,.28);display:block;margin-top:2px;font-style:italic}
+.meme-hdr{font-size:6px;font-weight:700;letter-spacing:.25em;color:rgba(239,68,68,.5);margin-bottom:6px}
+
 /* ── Open profile button ── */
 #open-btn{
   width:100%;padding:12px;border:none;cursor:pointer;border-radius:10px;
@@ -315,6 +327,14 @@ body{
     </div>
   </div>
 
+  <!-- MEME CARD -->
+  <div class="card red-top" id="meme-card">
+    <div class="inner">
+      <div class="meme-hdr">DATOS VERGONZOSOS</div>
+      <div id="meme-list"></div>
+    </div>
+  </div>
+
   <!-- OPEN PROFILE BUTTON -->
   <button id="open-btn" onclick="openProfile()">
     <span>⊹</span>
@@ -377,6 +397,7 @@ async function fillPlayer(summoner) {
   $('player-tag').textContent  = tag ? '#' + tag : ''
   $('plv-badge').textContent   = 'Lv ' + (summoner.summonerLevel || '—')
   profileRiotId = tag ? name + '#' + tag : name
+  if (summoner.platformId) { profilePlatform = summoner.platformId; $('player-region-tag').textContent = summoner.platformId.toUpperCase() }
   const iconId = summoner.profileIconId
   if (iconId && patch) {
     const img = $('profile-icon')
@@ -435,8 +456,16 @@ async function fillMasteries(masteries) {
   masteries.slice(0, 5).forEach(m => {
     const slot = document.createElement('div'); slot.className = 'champ-slot'
     const img = document.createElement('img')
-    img.src = champImg(m.ddKey, patch)
-    img.onerror = () => { img.style.opacity = '.08' }
+    // Community Dragon works with numeric championId (no DDragon key needed)
+    const cdUrl = m.championId
+      ? `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${m.championId}.png`
+      : ''
+    const ddUrl = m.ddKey && patch ? champImg(m.ddKey, patch) : ''
+    img.src = cdUrl || ddUrl
+    img.onerror = () => {
+      if (img.src !== ddUrl && ddUrl) { img.src = ddUrl; return }
+      img.style.opacity = '.08'
+    }
     slot.appendChild(img)
     const nm = document.createElement('div'); nm.className = 'champ-name'
     nm.textContent = m.champName || '—'; slot.appendChild(nm)
@@ -450,79 +479,209 @@ async function fillMasteries(masteries) {
   if (window.gsap) gsap.from('#champ-row > *', { opacity:0, scale:.8, duration:.3, stagger:.06, ease:'back.out(1.4)' })
 }
 
-// ── Fetch backend stats ──────────────────────────────────────────────────
-async function fetchBackendStats(riotId) {
-  if (!riotId) return
+// ── Skillshot Q data for meme estimates ─────────────────────────────────
+// castsPerGame = approx Q uses per game, missRate = estimated miss rate
+const Q_MEMES = {
+  'Zed':        { q:'Shuriken',         c:28, m:0.42 },
+  'Ezreal':     { q:'Mystic Shot',      c:38, m:0.33 },
+  'Nidalee':    { q:'Javelin',          c:10, m:0.68 },
+  'Thresh':     { q:'Death Sentence',   c: 9, m:0.52 },
+  'Blitzcrank': { q:'Rocket Grab',      c: 7, m:0.48 },
+  'Lux':        { q:'Binding',          c:14, m:0.38 },
+  'Ahri':       { q:'Orb of Deception', c:22, m:0.32 },
+  'Nautilus':   { q:'Dredge Line',      c: 8, m:0.47 },
+  'Morgana':    { q:'Tormented Soil',   c:16, m:0.35 },
+  'Caitlyn':    { q:'Peacemaker',       c:24, m:0.30 },
+  'Nami':       { q:'Aqua Prison',      c:10, m:0.45 },
+  'Brand':      { q:'Sear',             c:18, m:0.38 },
+  'Lee Sin':    { q:'Sonic Wave',       c:12, m:0.52 },
+  'Yasuo':      { q:'Steel Tempest',    c:35, m:0.30 },
+  'Yone':       { q:'Mortal Steel',     c:32, m:0.32 },
+  'Diana':      { q:'Crescent Strike',  c:18, m:0.28 },
+  'Ekko':       { q:'Z-Drive',          c:22, m:0.30 },
+  'Graves':     { q:'End of the Line',  c:18, m:0.30 },
+  'Jayce':      { q:'Shock Blast',      c:16, m:0.35 },
+  'Syndra':     { q:'Dark Sphere',      c:20, m:0.25 },
+  'Viktor':     { q:'Siphon Power',     c:22, m:0.18 },
+  'Draven':     { q:'Spinning Axe',     c:30, m:0.30 },
+  'Veigar':     { q:'Baleful Strike',   c:25, m:0.25 },
+  'Sivir':      { q:'Boomerang Blade',  c:16, m:0.28 },
+  'Leona':      { q:'Zenith Blade',     c:12, m:0.40 },
+}
+
+// ── Fetch OP.GG full profile → fill activity + meme sections ────────────
+async function fetchOpggProfile(gameName, tagLine, region) {
+  if (!gameName || !tagLine || !region) return
   try {
-    const url = BACKEND + '/api/players/overview?riotId=' + encodeURIComponent(riotId) + '&count=10'
+    const url = BACKEND + '/api/opgg/summoner-full'
+      + '?game_name=' + encodeURIComponent(gameName)
+      + '&tag_line='  + encodeURIComponent(tagLine)
+      + '&region='    + encodeURIComponent(region)
     const res = await fetch(url)
     if (!res.ok) throw new Error(res.status)
     const data = await res.json()
     if (!data.ok) throw new Error('no data')
-    profilePlatform = data.platform
-    if (profilePlatform) $('player-region-tag').textContent = profilePlatform.toUpperCase()
-    const s = data.summary
-    if (s) {
-      $('act-wr').textContent = s.winrate + '%'
-      $('act-wr').className = 'act-v ' + (s.winrate >= 55 ? 'wr-high' : s.winrate < 45 ? 'wr-low' : 'wr-med')
-      $('act-games').textContent = s.games + ' games'
-      $('act-kda').textContent = s.kda.toFixed(2)
-      $('act-kda').className = 'act-v ' + (s.kda >= 3 ? 'green' : s.kda < 1.5 ? 'red' : 'teal')
-      $('act-cs').textContent = s.csPerMin.toFixed(1) + ' CS/min'
-      // Quick stats row (overrides LCU derived values with match-based data)
-      $('sv-wr').textContent = s.winrate + '%'
-      $('sv-wr').className = 'stat-v ' + (s.winrate >= 55 ? 'green' : s.winrate < 45 ? 'red' : 'gold')
-      $('sv-kda').textContent = s.kda.toFixed(2)
-      $('sv-kda').className = 'stat-v ' + (s.kda >= 3 ? 'teal' : s.kda < 1.5 ? 'red' : 'gold')
-      $('sv-cs').textContent = s.csPerMin.toFixed(1)
-      $('sv-cs').className = 'stat-v gold'
+
+    const champStats = data.champion_stats || []  // sorted by play count desc
+    const rank = data.rank || {}
+
+    // ── Fill quick stats from OP.GG rank ────────────────────────────────
+    if (data.season_win_rate != null) {
+      $('sv-wr').textContent = data.season_win_rate + '%'
+      $('sv-wr').className = 'stat-v ' + (data.season_win_rate >= 55 ? 'green' : data.season_win_rate < 45 ? 'red' : 'gold')
     }
-    // Top champion performance from recent matches
-    const recentChamps = s?.recentChamps || []
-    const patch = await getPatch()
-    const list = $('top-champs-list'); list.innerHTML = ''
-    // We need champion names from the backend. But overview returns championId.
-    // Try to build image from CDragon (doesn't need champion name)
-    recentChamps.slice(0, 4).forEach(c => {
-      const row = document.createElement('div'); row.className = 'top-champ-row'
-      const img = document.createElement('img'); img.className = 'tci'
-      img.src = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${c.championId}.png`
-      img.onerror = () => { img.style.opacity = '.08' }
-      row.appendChild(img)
-      const nm = document.createElement('span'); nm.className = 'tc-name'
-      nm.textContent = 'Champion ' + c.championId; row.appendChild(nm)  // name resolved later
-      const wr = document.createElement('span'); wr.className = 'tc-wr'
-      wr.textContent = c.winrate.toFixed(0) + '% · ' + c.games + 'g'
-      wr.style.color = c.winrate >= 55 ? 'var(--green)' : c.winrate < 45 ? 'var(--red)' : 'var(--gold)'
-      row.appendChild(wr)
-      list.appendChild(row)
-    })
-    // Resolve champion names from DDragon
-    if (recentChamps.length && patch) {
-      try {
-        const cdData = await (await fetch('https://ddragon.leagueoflegends.com/cdn/' + patch + '/data/en_US/champion.json')).json()
-        const byKey = {}
-        for (const c of Object.values(cdData.data)) byKey[Number(c.key)] = c.name
-        list.querySelectorAll('.tc-name').forEach((el, i) => {
-          if (recentChamps[i]) el.textContent = byKey[recentChamps[i].championId] || ('Champ ' + recentChamps[i].championId)
-        })
-      } catch {}
+    const totalGames = data.season_play || 0
+    if (totalGames > 0) {
+      const avgKda = champStats.length
+        ? (champStats.reduce((s, c) => s + (c.kill + c.assist) / Math.max(c.death, 1) / Math.max(c.play, 1), 0) / champStats.length)
+        : null
+      if (avgKda != null) {
+        $('sv-kda').textContent = avgKda.toFixed(2)
+        $('sv-kda').className = 'stat-v ' + (avgKda >= 3 ? 'teal' : avgKda < 1.5 ? 'red' : 'gold')
+      }
     }
-    $('activity-loading').style.display = 'none'
-    $('activity-data').style.display = 'block'
-    if (window.gsap) gsap.from('#activity-data > *', { opacity:0, y:6, duration:.3, stagger:.08, ease:'power2.out' })
+
+    // ── Fill activity section ────────────────────────────────────────────
+    if (champStats.length) {
+      const top = champStats[0]
+      const topWr = top.play > 0 ? Math.round((top.win / top.play) * 100) : 0
+      const topKda = top.death > 0
+        ? ((top.kill + top.assist) / top.play / (top.death / top.play)).toFixed(2)
+        : 'Perfect'
+      $('act-wr').textContent = topWr + '%'
+      $('act-wr').className = 'act-v ' + (topWr >= 55 ? 'wr-high' : topWr < 45 ? 'wr-low' : 'wr-med')
+      $('act-games').textContent = top.play + 'g con ' + top.champion_name
+      $('act-kda').textContent = topKda
+      $('act-kda').className = 'act-v ' + (Number(topKda) >= 3 ? 'green' : Number(topKda) < 1.5 ? 'red' : 'teal')
+      $('act-cs').textContent = 'Temporada: ' + totalGames + 'g'
+
+      // Top 4 champions list
+      const patch = await getPatch()
+      const list = $('top-champs-list'); list.innerHTML = ''
+      champStats.slice(0, 4).forEach(c => {
+        const wr = c.play > 0 ? Math.round((c.win / c.play) * 100) : 0
+        const row = document.createElement('div'); row.className = 'top-champ-row'
+        const img = document.createElement('img'); img.className = 'tci'
+        const ddKey = c.champion_name.replace(/['\s.]/g,'')
+        img.src = patch ? `https://ddragon.leagueoflegends.com/cdn/${patch}/img/champion/${ddKey}.png` : ''
+        img.onerror = () => { img.style.opacity = '.08' }
+        row.appendChild(img)
+        const nm = document.createElement('span'); nm.className = 'tc-name'
+        nm.textContent = c.champion_name; row.appendChild(nm)
+        const wrEl = document.createElement('span'); wrEl.className = 'tc-wr'
+        wrEl.textContent = wr + '% · ' + c.play + 'g'
+        wrEl.style.color = wr >= 55 ? 'var(--green)' : wr < 45 ? 'var(--red)' : 'var(--gold)'
+        row.appendChild(wrEl)
+        list.appendChild(row)
+      })
+
+      $('activity-loading').style.display = 'none'
+      $('activity-data').style.display = 'block'
+      if (window.gsap) gsap.from('#activity-data > *', { opacity:0, y:6, duration:.3, stagger:.08, ease:'power2.out' })
+    }
+
+    // ── Fill meme stats ───────────────────────────────────────────────────
+    fillMemeStats(champStats, rank, data.season_play)
   } catch (err) {
-    $('activity-loading').textContent = 'Stats unavailable'
+    $('activity-loading').textContent = 'Stats no disponibles'
     $('activity-loading').style.animationName = 'none'
     $('activity-loading').style.opacity = '.3'
   }
+}
+
+// ── Generate meme stats from real OP.GG data ─────────────────────────────
+function fillMemeStats(champStats, rank, seasonPlay) {
+  if (!champStats || !champStats.length) return
+  const memes = []
+
+  // MEME 1: Total deaths with most-played champion
+  const top = champStats[0]
+  if (top && top.death > 10) {
+    const avgDeaths = (top.death / Math.max(top.play, 1)).toFixed(1)
+    memes.push({
+      num: top.death,
+      color: 'red',
+      txt: `muertes acumuladas con <b>${top.champion_name}</b> esta temporada.`,
+      sub: `${avgDeaths} muertes por partida. El enemigo te agradece el servicio.`,
+    })
+  }
+
+  // MEME 2: Estimated missed Q's — if top champ is in skillshot dict
+  const qInfo = Q_MEMES[top.champion_name]
+  if (qInfo && top.play >= 5) {
+    const missed = Math.round(top.play * qInfo.c * qInfo.m)
+    memes.push({
+      num: missed,
+      color: 'gold',
+      txt: `Qs fallados con <b>${top.champion_name}</b> esta temporada (${qInfo.q}).`,
+      sub: `~${qInfo.c} lanzamientos por partida × ${Math.round(qInfo.m*100)}% de fallo × ${top.play} partidas. La próxima sí entra.`,
+    })
+  } else if (top.play >= 5) {
+    // Alt meme 2: find champ with most games and worst WR (<50%, >10g)
+    const griefPick = champStats.find(c => c.play >= 10 && (c.win / c.play) < 0.50)
+    if (griefPick) {
+      const wr = Math.round((griefPick.win / griefPick.play) * 100)
+      memes.push({
+        num: griefPick.play,
+        color: 'red',
+        txt: `partidas jugadas con <b>${griefPick.champion_name}</b> — ${wr}% WR.`,
+        sub: `Eso no es un main. Eso es un ciclo de luto.`,
+      })
+    }
+  }
+
+  // MEME 3: Season losses roast
+  const losses = rank.losses || 0
+  const wins   = rank.wins   || 0
+  const wr     = rank.win_rate
+  if (losses > 20) {
+    if (wr != null && wr < 50) {
+      memes.push({
+        num: losses,
+        color: 'teal',
+        txt: `derrotas en ranked esta temporada (${wr}% WR).`,
+        sub: `Estadísticamente el 73% creen que fue culpa del equipo. El otro 27% tenía razón.`,
+      })
+    } else if (wr != null && wr >= 55) {
+      memes.push({
+        num: wins,
+        color: 'green',
+        txt: `victorias en ranked — ${wr}% WR.`,
+        sub: `Okay, reconocemos que eres bueno. (por ahora)`,
+      })
+    } else {
+      memes.push({
+        num: losses,
+        color: 'teal',
+        txt: `derrotas en ranked esta temporada.`,
+        sub: `Sigue intentando. No puede empeorar… o sí.`,
+      })
+    }
+  }
+
+  if (!memes.length) return
+
+  const list = $('meme-list'); list.innerHTML = ''
+  memes.forEach(m => {
+    const row = document.createElement('div'); row.className = 'meme-row'
+    const numEl = document.createElement('div'); numEl.className = 'meme-num ' + m.color
+    numEl.textContent = m.num.toLocaleString()
+    const body = document.createElement('div'); body.className = 'meme-body'
+    const txt = document.createElement('div'); txt.className = 'meme-txt'; txt.innerHTML = m.txt
+    const sub = document.createElement('span'); sub.className = 'meme-sub'; sub.textContent = m.sub
+    body.appendChild(txt); body.appendChild(sub)
+    row.appendChild(numEl); row.appendChild(body)
+    list.appendChild(row)
+  })
+  const card = $('meme-card'); card.style.display = 'block'
+  if (window.gsap) gsap.from('#meme-card', { opacity:0, y:8, duration:.4, ease:'power2.out' })
 }
 
 // ── Open full profile in browser ─────────────────────────────────────────
 function openProfile() {
   if (!profileRiotId) return
   const region = profilePlatform || 'la1'
-  const url = 'http://192.168.1.79:8080/stats/' + region + '/' + encodeURIComponent(profileRiotId)
+  const url = 'http://localhost:8080/stats/' + region + '/' + encodeURIComponent(profileRiotId)
   if (typeof overwolf !== 'undefined') overwolf.utils.openUrlInDefaultBrowser(url)
   else window.open(url, '_blank')
 }
@@ -546,8 +705,10 @@ if (typeof overwolf !== 'undefined') {
       if (ranked)   fillRank(ranked)
       if (masteries && masteries.length) fillMasteries(masteries)
       if (summoner) {
-        const riotId = (summoner.gameName || summoner.displayName || '') + (summoner.tagLine ? '#' + summoner.tagLine : '')
-        if (riotId && riotId !== '#') fetchBackendStats(riotId)
+        const gn  = summoner.gameName || summoner.displayName || ''
+        const tag = summoner.tagLine || ''
+        const reg = summoner.platformId || profilePlatform || 'LA1'
+        if (gn && tag) fetchOpggProfile(gn, tag, reg)
       }
     }
     if (c.type === 'queue-phase' && c.phase) {
