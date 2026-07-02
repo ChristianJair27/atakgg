@@ -9,8 +9,9 @@ import { getChampionBuild } from '../services/opgg.js';
 const router = Router();
 
 // ─── Ollama config (same pattern as ai.routes.ts) ────────────────────────────
-const OLLAMA_URL = 'http://localhost:11434/api/chat';
-const MODEL = 'llama3.1:8b';
+// Configurable via env so prod points at a hosted LLM; local Ollama in dev.
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/chat';
+const MODEL = process.env.OLLAMA_MODEL || 'llama3.1:8b';
 
 // ─── Patch-aware DDragon cache (1 hour) ──────────────────────────────────────
 let patchCache: { version: string; exp: number } | null = null;
