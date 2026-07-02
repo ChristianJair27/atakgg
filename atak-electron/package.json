@@ -37,8 +37,7 @@
           ]
         }
       ],
-      "artifactName": "${productName}-Setup-${version}.${ext}",
-      "publisherName": "ATAK.GG"
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,

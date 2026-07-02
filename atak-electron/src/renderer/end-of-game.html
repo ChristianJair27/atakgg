@@ -417,7 +417,7 @@ function modeLabel(m) {
 function openProfile() {
   const name = lastEogData?.localPlayer?.summonerName || lastEogData?.localPlayer?.riotIdGameName
   if (!name) return
-  try { shell.openExternal(`http://localhost:8080/stats/${currentPlatform}/${encodeURIComponent(name)}`) } catch {}
+  try { shell.openExternal(`https://atakgg.revolution505.com/stats/${currentPlatform}/${encodeURIComponent(name)}`) } catch {}
 }
 function closeMe() { window.close() }
 

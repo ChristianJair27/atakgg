@@ -155,9 +155,8 @@ export class OverlayController {
     });
     wc.ipc.on('open-profile', (_e, name: string) => {
       const n = (name || '').trim();
-      const url = n
-        ? `http://localhost:8080/stats/la1/${encodeURIComponent(n)}`
-        : 'http://localhost:8080';
+      const base = process.env.ATAK_FRONTEND ?? 'https://atakgg.revolution505.com';
+      const url = n ? `${base}/stats/la1/${encodeURIComponent(n)}` : base;
       shell.openExternal(url).catch(() => {});
     });
     this.fallbackWindow.on('closed', () => { this.fallbackWindow = null; });

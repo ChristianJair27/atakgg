@@ -6,9 +6,9 @@ import { LiveClientService } from '../services/live-client.service';
 
 const owApp = electronApp as overwolf.OverwolfApp;
 
-// Default to localhost so it survives router/DHCP IP changes. Override with ATAK_URL env if you
-// need to reach the dev server from another device on the LAN.
-const ATAK_URL = process.env.ATAK_URL ?? 'http://localhost:8080/';
+// Production frontend by default so distributed builds work out of the box.
+// For local dev, run with ATAK_URL=http://localhost:8080/ to point at your Vite server.
+const ATAK_URL = process.env.ATAK_URL ?? 'https://atakgg.revolution505.com/';
 
 export class MainWindowController {
   private browserWindow: BrowserWindow = null;

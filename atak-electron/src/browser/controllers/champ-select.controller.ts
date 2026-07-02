@@ -3,7 +3,7 @@ import * as https from 'https';
 import * as path from 'path';
 import { LcuService, ChampSelectState } from '../services/lcu.service';
 
-const BACKEND = 'http://localhost:4000';
+const BACKEND = process.env.ATAK_BACKEND ?? 'https://atakback.revolution505.com';
 const DDRAGON_VERSION_URL = 'https://ddragon.leagueoflegends.com/api/versions.json';
 
 // Minimal https fetch for champion ID→name conversion (avoids extra npm dep)
