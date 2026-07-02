@@ -34,4 +34,10 @@ rendererConfig.plugins.push(new HtmlWebpackPlugin({
   inject: false,
 }));
 
+rendererConfig.plugins.push(new HtmlWebpackPlugin({
+  template: './src/renderer/scoreboard.html',
+  filename: path.join(__dirname, './dist/renderer/scoreboard.html'),
+  inject: false,
+}));
+
 module.exports = rendererConfig;

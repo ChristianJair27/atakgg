@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>ATAK.GG Scoreboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --red: #e23b4e;
+      --blue: #3b82f6;
+      --gold: #c8aa6e;
+      --ink: rgba(10, 11, 15, 0.82);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f1f1f1;
+      --muted: rgba(255,255,255,0.4);
+      --green: #34d399;
+      --heading: 'Instrument Serif', Georgia, serif;
+      --body: 'Barlow', system-ui, sans-serif;
+    }
+
+    body {
+      font-family: var(--body);
+      background: transparent;
+      color: var(--text);
+      user-select: none;
+      overflow: hidden;
+      width: 760px;
+    }
+
+    /* ── Liquid glass panel ── */
+    .board {
+      position: relative;
+      background: var(--ink);
+      backdrop-filter: blur(18px) saturate(150%);
+      -webkit-backdrop-filter: blur(18px) saturate(150%);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 36px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,255,255,0.10);
+    }
+    .board::before {
+      content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.4px;
+      background: linear-gradient(180deg,
+        rgba(255,255,255,.45) 0%, rgba(255,255,255,.14) 20%,
+        rgba(255,255,255,0) 42%, rgba(255,255,255,0) 58%,
+        rgba(255,255,255,.14) 80%, rgba(255,255,255,.45) 100%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+    }
+
+    /* Title bar */
+    .title-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 13px 8px;
+      background: rgba(0,0,0,0.35);
+      border-bottom: 1px solid var(--border);
+      -webkit-app-region: drag; cursor: move;
+    }
+    .title-bar .logo { display: flex; align-items: center; gap: 8px; }
+    .logo-mark {
+      width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+      background: linear-gradient(135deg, rgba(226,59,78,.20), rgba(226,59,78,.04));
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-mark svg { width: 12px; height: 12px; color: var(--red); }
+    .logo-word { font-family: var(--heading); font-style: italic; font-size: 17px; color: #fff; line-height: 1; }
+    .logo-title { font-size: 9px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-left: 4px; }
+    .title-btn {
+      -webkit-app-region: no-drag; cursor: pointer;
+      width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+      border-radius: 6px; font-size: 13px; color: var(--muted);
+      border: none; background: transparent; transition: background 0.15s, color 0.15s;
+    }
+    .title-btn:hover { background: rgba(226,59,78,0.15); color: var(--red); }
+
+    /* Waiting state */
+    .waiting { padding: 40px 14px; text-align: center; }
+    .waiting-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.5; }
+    .waiting-text { font-family: var(--heading); font-style: italic; font-size: 19px; color: rgba(255,255,255,0.75); line-height: 1.4; }
+
+    /* Content */
+    .content { display: none; padding: 12px; gap: 14px; grid-template-columns: 1fr 1fr; }
+    .content.active { display: grid; }
+
+    /* Team section */
+    .team-head {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 8.5px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .team-head.order { color: rgba(100,150,255,.85); }
+    .team-head.chaos { color: rgba(255,100,110,.85); }
+    .tdot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .team-head.order .tdot { background: var(--blue); box-shadow: 0 0 8px rgba(59,130,246,.6); }
+    .team-head.chaos .tdot { background: var(--red); box-shadow: 0 0 8px rgba(226,59,78,.6); }
+    .team-kda { margin-left: auto; font-size: 9px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; }
+
+    /* Player card */
+    .players { display: flex; flex-direction: column; gap: 6px; }
+    .pcard {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 10px;
+      background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07);
+      transition: background .15s;
+    }
+    .pcard.order-card { border-top: 2px solid rgba(59,130,246,.35); }
+    .pcard.chaos-card { border-top: 2px solid rgba(226,59,78,.32); }
+    .pcard.me { border-color: rgba(200,170,110,.35); background: rgba(200,170,110,.05); }
+    .pcard.dead { opacity: .45; filter: grayscale(.5); }
+
+    .champ-wrap { position: relative; flex-shrink: 0; }
+    .champ-ico {
+      width: 40px; height: 40px; border-radius: 9px; object-fit: cover; display: block;
+      border: 1.5px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04);
+    }
+    .champ-lv {
+      position: absolute; bottom: -4px; right: -4px; font-size: 7px; font-weight: 800;
+      padding: 1px 4px; background: #0b0c0e; border: 1px solid rgba(255,255,255,.14); border-radius: 3px;
+      color: rgba(255,255,255,.6); line-height: 1;
+    }
+
+    .pinfo { flex: 1; min-width: 0; }
+    .pname { font-size: 11px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
+    .pname.me-name { color: var(--gold); }
+    .pchamp { font-size: 9px; font-weight: 500; color: rgba(255,255,255,.5); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .pstats { flex-shrink: 0; text-align: right; }
+    .pkda { font-size: 12px; font-weight: 700; font-family: var(--heading); font-style: italic; letter-spacing: -0.3px; line-height: 1; }
+    .pk { color: var(--green); } .pd { color: #fca5a5; } .pa { color: #93c5fd; }
+    .psep { color: rgba(255,255,255,.2); margin: 0 1px; }
+    .pcs { font-size: 8.5px; color: var(--muted); margin-top: 3px; letter-spacing: 0.3px; }
+  </style>
+</head>
+<body>
+  <div class="board">
+    <!-- Title Bar -->
+    <div class="title-bar">
+      <div class="logo">
+        <span class="logo-mark"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.2l1.85 12.4-1.85 2.5-1.85-2.5L12 1.2z"/><path d="M7.3 14.0h9.4v1.6H7.3z"/><path d="M11.05 15.8h1.9v4.9l-.95 1.1-.95-1.1z"/></svg></span>
+        <span class="logo-word">atak</span>
+        <span class="logo-title">Scoreboard</span>
+      </div>
+      <button class="title-btn" id="closeBtn" title="Cerrar (Ctrl+Shift+S)">✕</button>
+    </div>
+
+    <!-- Waiting for game -->
+    <div id="waitingState" class="waiting">
+      <div class="waiting-icon">🗡️</div>
+      <div class="waiting-text">Esperando partida…</div>
+    </div>
+
+    <!-- Content -->
+    <div id="content" class="content">
+      <div class="team-section">
+        <div class="team-head order"><span class="tdot"></span><span>ORDER</span><span class="team-kda" id="orderKda"></span></div>
+        <div class="players" id="orderList"></div>
+      </div>
+      <div class="team-section">
+        <div class="team-head chaos"><span class="tdot"></span><span>CHAOS</span><span class="team-kda" id="chaosKda"></span></div>
+        <div class="players" id="chaosList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = window.require('electron');
+
+    let DDV = '14.24.1';
+
+    const waitingState = document.getElementById('waitingState');
+    const content      = document.getElementById('content');
+    const orderList    = document.getElementById('orderList');
+    const chaosList    = document.getElementById('chaosList');
+    const orderKda     = document.getElementById('orderKda');
+    const chaosKda     = document.getElementById('chaosKda');
+
+    const DD_KEY = { 'Wukong':'MonkeyKing', 'Nunu & Willump':'Nunu', 'Renata Glasc':'Renata', "Bel'Veth":'BelVeth', "K'Sante":'KSante' };
+    function champImg(name) {
+      if (!name) return '';
+      const key = DD_KEY[name] || name.replace(/[^a-zA-Z0-9]/g, '');
+      return `https://ddragon.leagueoflegends.com/cdn/${DDV}/img/champion/${key}.png`;
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+        ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+    }
+
+    function teamKdaStr(players) {
+      const k = players.reduce((s, p) => s + (p.kills || 0), 0);
+      const d = players.reduce((s, p) => s + (p.deaths || 0), 0);
+      const a = players.reduce((s, p) => s + (p.assists || 0), 0);
+      return `${k} / ${d} / ${a}`;
+    }
+
+    function buildCard(p, side) {
+      const name = p.name || p.championName || '—';
+      const displayName = name.split('#')[0];
+      const lv = p.level; // PlayerLite may not carry level — badge only when present
+      return `<div class="pcard ${side}-card${p.isMe ? ' me' : ''}${p.isDead ? ' dead' : ''}">
+        <div class="champ-wrap">
+          <img class="champ-ico" src="${champImg(p.championName)}" onerror="this.style.opacity=.12;this.removeAttribute('src')" />
+          ${lv ? `<span class="champ-lv">${esc(lv)}</span>` : ''}
+        </div>
+        <div class="pinfo">
+          <div class="pname${p.isMe ? ' me-name' : ''}">${esc(displayName)}</div>
+          <div class="pchamp">${esc(p.championName || '—')}</div>
+        </div>
+        <div class="pstats">
+          <div class="pkda"><span class="pk">${p.kills || 0}</span><span class="psep">/</span><span class="pd">${p.deaths || 0}</span><span class="psep">/</span><span class="pa">${p.assists || 0}</span></div>
+          <div class="pcs">${p.cs || 0} CS</div>
+        </div>
+      </div>`;
+    }
+
+    function render(state) {
+      if (!state || !Array.isArray(state.players) || state.players.length === 0) return;
+      waitingState.style.display = 'none';
+      content.classList.add('active');
+
+      const order = state.players.filter(p => p.team === 'ORDER');
+      const chaos = state.players.filter(p => p.team === 'CHAOS');
+
+      orderList.innerHTML = order.map(p => buildCard(p, 'order')).join('');
+      chaosList.innerHTML = chaos.map(p => buildCard(p, 'chaos')).join('');
+      orderKda.textContent = order.length ? teamKdaStr(order) : '';
+      chaosKda.textContent = chaos.length ? teamKdaStr(chaos) : '';
+    }
+
+    // Fetch the latest DDragon patch once for icon URLs.
+    async function initPatch() {
+      try {
+        const versions = await (await fetch('https://ddragon.leagueoflegends.com/api/versions.json')).json();
+        if (versions && versions[0]) DDV = versions[0];
+      } catch { /* keep fallback DDV */ }
+    }
+
+    document.addEventListener('DOMContentLoaded', initPatch);
+
+    ipcRenderer.on('live-data', (e, state) => render(state));
+    ipcRenderer.on('game-ended', () => {
+      content.classList.remove('active');
+      waitingState.style.display = 'block';
+    });
+
+    document.getElementById('closeBtn').addEventListener('click', () => ipcRenderer.send('close-scoreboard'));
+  </script>
+</body>
+</html>

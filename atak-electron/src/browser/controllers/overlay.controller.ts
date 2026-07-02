@@ -1,5 +1,5 @@
 import path from 'path';
-import { ipcMain, BrowserWindow, screen, shell } from 'electron';
+import { ipcMain, BrowserWindow, screen, shell, globalShortcut } from 'electron';
 import {
   OverlayBrowserWindow,
   OverlayWindowOptions,
@@ -14,6 +14,7 @@ const LOL_GAME_IDS = [5426, 22848, 21570];
 export class OverlayController {
   private overlayWindow: OverlayBrowserWindow = null;   // OSR-injected window (when Overwolf overlay package is available)
   private fallbackWindow: BrowserWindow = null;         // plain always-on-top window (works without OSR / Overwolf approval)
+  private scoreboardWindow: BrowserWindow = null;       // Ctrl+Shift+S player-stats scoreboard (plain always-on-top window)
   private isVisible = true;
   private lastDataTs = 0;
   private inactivityTimer: NodeJS.Timeout = null;
@@ -72,17 +73,57 @@ export class OverlayController {
   }
 
   private registerHotkeys() {
-    // F8 to toggle overlay
+    // Use Electron globalShortcut instead of the OSR/Overwolf hotkeys API, which
+    // is unavailable when the Overwolf overlay package is a stub. globalShortcut
+    // works app-wide (even while the game is focused) and doesn't need OSR.
     try {
-      this.overlayService.overlayApi.hotkeys.register(
-        { name: 'atakToggle', keyCode: 119, passthrough: true },
-        (hotkey, state) => {
-          if (state === 'pressed') this.toggleVisibility();
-        }
-      );
+      const okToggle = globalShortcut.register('F9', () => this.toggleVisibility());
+      const okBoard = globalShortcut.register('CommandOrControl+Shift+S', () => this.toggleScoreboard());
+      console.log('[ATAK] global hotkeys registered — F9 (toggle overlay):', okToggle, '| Ctrl+Shift+S (scoreboard):', okBoard);
     } catch (e) {
       console.error('[ATAK] hotkey register error:', e);
     }
+  }
+
+  private toggleScoreboard() {
+    // Toggle the player-stats scoreboard window: hide if visible, show if hidden, create otherwise.
+    if (this.scoreboardWindow && !this.scoreboardWindow.isDestroyed()) {
+      if (this.scoreboardWindow.isVisible()) this.scoreboardWindow.hide();
+      else this.scoreboardWindow.showInactive();
+      return;
+    }
+
+    const { width } = screen.getPrimaryDisplay().workAreaSize;
+    this.scoreboardWindow = new BrowserWindow({
+      width: 760,
+      height: 420,
+      x: Math.round((width - 760) / 2),
+      y: 40,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      skipTaskbar: true,
+      focusable: true,
+      show: false,
+      alwaysOnTop: true,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        devTools: false,
+      },
+    });
+    this.scoreboardWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    this.scoreboardWindow.setVisibleOnAllWorkspaces(true);
+
+    const scoreboardHtmlPath = path.join(__dirname, '../renderer/scoreboard.html');
+    this.scoreboardWindow.loadFile(scoreboardHtmlPath);
+    this.scoreboardWindow.once('ready-to-show', () => this.scoreboardWindow?.showInactive());
+
+    const wc = this.scoreboardWindow.webContents;
+    wc.ipc.on('close-scoreboard', () => this.scoreboardWindow?.hide());
+    this.scoreboardWindow.on('closed', () => { this.scoreboardWindow = null; });
+
+    console.log('[ATAK] scoreboard window created');
   }
 
   private async checkForAlreadyRunningGame() {
@@ -234,6 +275,9 @@ export class OverlayController {
       }
       if (this.fallbackWindow && !this.fallbackWindow.isDestroyed()) {
         this.fallbackWindow.webContents.send(channel, data);
+      }
+      if (this.scoreboardWindow && !this.scoreboardWindow.isDestroyed()) {
+        this.scoreboardWindow.webContents.send(channel, data);
       }
     } catch {}
   }
